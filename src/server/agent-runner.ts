@@ -26,6 +26,7 @@ import {
   prefixPromptWithContextSummary,
   renderConversationSummaryBlock,
 } from './context-compaction-service'
+import { buildYiMemoryBlock } from './yi-memory-injector'
 import { buildHistoryFor } from './conversation-context'
 import {
   clearFileWrites,
@@ -1835,7 +1836,8 @@ async function buildAdapterInput(
 ): Promise<AdapterInput> {
   const effectiveCwd = getEffectiveCwd(workspace)
   const baseSystemPrompt = systemPromptOverride ?? agent.systemPrompt
-  let systemPromptWithWorkspace = buildWorkspaceContextBlock(workspace) + '\n\n' + baseSystemPrompt
+  const yiMemory = await buildYiMemoryBlock().catch(() => '')
+  let systemPromptWithWorkspace = (yiMemory ? yiMemory + '\n\n' : '') + buildWorkspaceContextBlock(workspace) + '\n\n' + baseSystemPrompt
   const toolGuidance = buildAgentHubToolGuidance(agent, toolNames, workspace)
   if (toolGuidance) systemPromptWithWorkspace += '\n\n' + toolGuidance
 

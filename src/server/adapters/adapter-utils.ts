@@ -1,4 +1,5 @@
 import { mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
 import path from 'node:path'
 
 import { IS_WINDOWS } from '@/server/platform'
@@ -32,8 +33,8 @@ export function buildCodexChildProcessEnv(): Record<string, string> {
     }
   }
 
-  const codexHome = path.join(getAgentHubDataDir(), 'codex-home')
-  mkdirSync(codexHome, { recursive: true })
+  const codexHome = process.env.CODEX_HOME || path.join(homedir(), '.codex')
+  try { mkdirSync(codexHome, { recursive: true }) } catch {}
   env.CODEX_HOME = codexHome
   env.CODEX_SQLITE_HOME = codexHome
   return env
