@@ -220,7 +220,7 @@ function renderUserParts(parts: MessagePart[]): string {
         buf.push(p.content)
         break
       case 'image_attachment':
-        buf.push(`[用户发了一张图片]`)
+        buf.push(`[用户发了一张图片（你没有图像识别能力，无法查看。如需了解内容，让用户文字描述）]`)
         break
       case 'file_attachment':
         buf.push(`[文件附件: ${p.fileName}]`)

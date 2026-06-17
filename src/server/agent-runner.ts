@@ -2584,7 +2584,7 @@ function extractTextFromParts(parts: MessagePart[]): string {
       if (p.type === 'text' || p.type === 'thinking') return p.content
       if (p.type === 'code') return '```' + p.language + '\n' + p.content + '\n```'
       if (p.type === 'image_attachment') {
-        return `[用户发了一张图片]`
+        return `[用户发了一张图片（你没有图像识别能力，无法查看。如需了解内容，让用户文字描述）]`
       }
       if (p.type === 'file_attachment') {
         return `[文件附件: ${p.fileName} (${formatSize(p.size)}, ${p.mimeType}) · id=${p.attachmentId}]`
