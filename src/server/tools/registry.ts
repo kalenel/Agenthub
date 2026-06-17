@@ -74,6 +74,7 @@ function buildRegistry(): ToolRegistry {
   reg.register(fsWriteTool)
   reg.register(bashTool)
   reg.register(askUserTool)
+  for (const t of yiMemoryTools) reg.register(t)
   return reg
 }
 

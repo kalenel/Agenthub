@@ -220,7 +220,7 @@ function renderUserParts(parts: MessagePart[]): string {
         buf.push(p.content)
         break
       case 'image_attachment':
-        buf.push(`[图片附件: ${p.fileName}]`)
+        buf.push(`[用户发了一张图片]`)
         break
       case 'file_attachment':
         buf.push(`[文件附件: ${p.fileName}]`)
