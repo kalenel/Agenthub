@@ -1850,15 +1850,13 @@ async function buildAdapterInput(
   // 只在 per-agent 字段为空时才注入全局 settings，避免覆盖用户的精细配置
   let effectiveApiKey = agent.apiKey
   let effectiveApiBaseUrl = agent.apiBaseUrl
-  if (!effectiveApiKey || !effectiveApiBaseUrl) {
+  if (!effectiveApiKey || (!effectiveApiBaseUrl && agent.adapterName === 'claude-code')) {
     const settings = await getAppSettings()
     if (!effectiveApiKey) {
       effectiveApiKey = pickSettingsKey(settings, agent)
     }
-    if (!effectiveApiBaseUrl) {
-      if (agent.adapterName === 'claude-code' || agent.modelProvider === 'anthropic') {
-        effectiveApiBaseUrl = settings.anthropicBaseUrl
-      }
+    if (!effectiveApiBaseUrl && agent.adapterName === 'claude-code') {
+      effectiveApiBaseUrl = settings.anthropicBaseUrl
     }
   }
 
