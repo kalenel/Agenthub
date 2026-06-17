@@ -52,6 +52,13 @@ export function ChatPanel() {
     (s) => s.setPendingDispatchPlansForConversation,
   )
   const [addOpen, setAddOpen] = useState(false)
+  const handleRemoveAgent = async (agentId: string) => {
+    if (!conv) return
+    try {
+      const updated = await removeAgentsFromConversation(conv.id, [agentId])
+      useAppStore.getState().upsertConversation(updated)
+    } catch (err) { console.warn(err) }
+  }
   const [filesOpen, setFilesOpen] = useState(false)
   const [artifactsOpen, setArtifactsOpen] = useState(false)
 
@@ -122,7 +129,7 @@ export function ChatPanel() {
           >
             <Menu className="size-4" />
           </Button>
-          <ParticipantStack agents={participantAgents} />
+          <ParticipantStack agents={participantAgents} onRemove={conv.mode === "group" ? handleRemoveAgent : undefined} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <span className="min-w-0 truncate text-sm font-medium">{conv.title}</span>
@@ -273,7 +280,7 @@ export function ChatPanel() {
   )
 }
 
-function ParticipantStack({ agents }: { agents: AgentRow[] }) {
+function ParticipantStack({ agents, onRemove }: { agents: AgentRow[]; onRemove?: (id: string) => void }) {
   const visibleAgents = agents.slice(0, 3)
   const hiddenAgents = agents.slice(3)
   const title = agents.map((agent) => agent.name).join(' / ')
@@ -281,12 +288,23 @@ function ParticipantStack({ agents }: { agents: AgentRow[] }) {
   return (
     <div className="flex shrink-0 -space-x-2 overflow-hidden pr-1" title={title}>
       {visibleAgents.map((agent) => (
-        <AgentInfoPopover
-          key={agent.id}
-          agent={agent}
-          size="sm"
-          avatarClassName="border-2 border-background"
-        />
+        <div key={agent.id} className="group/agent relative shrink-0">
+          <AgentInfoPopover
+            agent={agent}
+            size="sm"
+            avatarClassName="border-2 border-background"
+          />
+          {onRemove && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onRemove(agent.id); }}
+              className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground opacity-0 transition-opacity group-hover/agent:opacity-100"
+              title={"Remove " + agent.name}
+            >
+              {"\u00d7"}
+            </button>
+          )}
+        </div>
       ))}
       {hiddenAgents.length > 0 && (
         <div

@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import {
   addAgentsToConversation,
+  removeAgentsFromConversation,
   deleteConversation,
   renameConversation,
   setConversationApprovalMode,
@@ -28,6 +29,7 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
 const PatchBody = z
   .object({
     addAgentIds: z.array(z.string()).min(1).optional(),
+    removeAgentIds: z.array(z.string()).min(1).optional(),
     title: z.string().min(1).max(100).optional(),
     fsWriteApprovalMode: z.enum(['auto', 'review']).optional(),
     togglePin: z.literal(true).optional(),
@@ -36,6 +38,7 @@ const PatchBody = z
   .refine(
     (d) =>
       d.addAgentIds !== undefined ||
+      d.removeAgentIds !== undefined ||
       d.title !== undefined ||
       d.fsWriteApprovalMode !== undefined ||
       d.togglePin !== undefined ||
@@ -63,6 +66,12 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
       conversation = await addAgentsToConversation({
         conversationId: id,
         agentIds: parsed.data.addAgentIds,
+      })
+    }
+    if (parsed.data.removeAgentIds !== undefined) {
+      conversation = await removeAgentsFromConversation({
+        conversationId: id,
+        agentIds: parsed.data.removeAgentIds,
       })
     }
     if (parsed.data.fsWriteApprovalMode !== undefined) {

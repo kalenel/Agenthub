@@ -828,3 +828,12 @@ export async function regenerateMobileDeviceToken(): Promise<AppSettingsRow> {
   )
   return settings
 }
+
+export async function removeAgentsFromConversation(conversationId: string, removeAgentIds: string[]): Promise<any> {
+  const res = await fetch(`/api/conversations/${conversationId}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ removeAgentIds }),
+  });
+  const { conversation } = await res.json();
+  return conversation;
+}

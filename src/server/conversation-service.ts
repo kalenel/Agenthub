@@ -1021,3 +1021,14 @@ export async function editAndResendLatestUserMessage(
     runIds: sent.runIds,
   }
 }
+
+export interface RemoveAgentsArgs { conversationId: string; agentIds: string[] }
+export async function removeAgentsFromConversation(a: RemoveAgentsArgs): Promise<any> {
+  const conv = await db.query.conversations.findFirst({ where: eq(schema.conversations.id, a.conversationId) });
+  if (!conv) throw new Error("Conversation not found");
+  const remaining = conv.agentIds.filter((id) => !a.agentIds.includes(id));
+  if (remaining.length === 0) throw new Error("Cannot remove all agents");
+  const m = remaining.length >= 2 ? "group" : "single";
+  await db.update(schema.conversations).set({ agentIds: remaining, mode: m, updatedAt: Date.now() }).where(eq(schema.conversations.id, a.conversationId));
+  return toConversationWithMeta({ ...conv, agentIds: remaining, mode: m } as typeof conv);
+}
