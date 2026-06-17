@@ -549,7 +549,7 @@ async function executeOrchestratorRun(
     workspace,
   )
   // Aggregate 阶段不再带 plan_tasks / ask_user，避免重复拆解或在最终总结前再次打断用户。
-  const aggregateToolNames = agent.toolNames.filter(
+  const aggregateToolNames = agent.toolNames.concat(["yi_save_memory","yi_recall_memory","yi_semantic_search","yi_get_timeline","yi_save_task","yi_get_tasks","yi_update_task","yi_get_identity","yi_get_recent","yi_get_all","yi_get_stats","yi_local_status","yi_get_checkpoint","yi_update_checkpoint","yi_save_state","yi_get_state","yi_scan_backups","yi_scan_text","yi_save_environment","yi_get_environment"]).filter(
     (n) => n !== 'plan_tasks' && n !== ASK_USER_TOOL_NAME,
   )
 
@@ -602,7 +602,7 @@ async function runPlanStage(
       'plan_tasks',
     ),
     ASK_USER_TOOL_NAME,
-  )
+  ).concat(["yi_save_memory","yi_recall_memory","yi_semantic_search","yi_get_timeline","yi_save_task","yi_get_tasks","yi_update_task","yi_get_identity","yi_get_recent","yi_get_all","yi_get_stats","yi_local_status","yi_get_checkpoint","yi_update_checkpoint","yi_save_state","yi_get_state","yi_scan_backups","yi_scan_text","yi_save_environment","yi_get_environment"])
   // 补救轮：把上一轮结果摘要拼到 prompt 前，原始请求仍保留供 Orchestrator 参考
   const effectivePrompt = replanContext
     ? `${replanContext}\n\n<original_request>\n${userPrompt}\n</original_request>`
