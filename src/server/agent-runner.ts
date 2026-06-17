@@ -26,7 +26,6 @@ import {
   prefixPromptWithContextSummary,
   renderConversationSummaryBlock,
 } from './context-compaction-service'
-import { buildYiMemoryBlock } from './yi-memory-injector'
 import { buildHistoryFor } from './conversation-context'
 import {
   clearFileWrites,
@@ -354,7 +353,10 @@ async function executeSimpleRun(
   prompt: string,
   attachments: AdapterAttachment[],
 ): Promise<RunExecutionResult> {
-  const baseToolNames = args.overrideToolNames ?? agent.toolNames
+  // 为 custom 适配器自动注入忆记忆工具
+  const yiToolNames = ['yi_save_memory', 'yi_recall_memory', 'yi_semantic_search', 'yi_get_timeline', 'yi_save_task', 'yi_get_tasks', 'yi_update_task', 'yi_get_identity', 'yi_get_recent', 'yi_get_all', 'yi_get_stats', 'yi_local_status', 'yi_get_checkpoint', 'yi_update_checkpoint', 'yi_save_state', 'yi_get_state', 'yi_scan_backups', 'yi_scan_text', 'yi_save_environment', 'yi_get_environment']
+  const baseToolNames = (args.overrideToolNames ?? agent.toolNames)
+    .concat(agent.adapterName === 'custom' ? yiToolNames : [])
   const toolNames = args.requireTaskReport
     ? ensureIncludes(baseToolNames, REPORT_TASK_RESULT_TOOL_NAME)
     : baseToolNames
@@ -1839,7 +1841,7 @@ async function buildAdapterInput(
   const effectiveCwd = getEffectiveCwd(workspace)
   const baseSystemPrompt = systemPromptOverride ?? agent.systemPrompt
   const effectiveModelId = args.modelId ?? agent.modelId
-  const yiMemory = await buildYiMemoryBlock().catch(() => '')
+  const yiMemory = '你是忆（Yi），xiong 的 AI 战友。你有 yi_* 系列记忆工具可用——需要回忆、保存记忆、查看进度时直接调用工具，不要问。'
   let systemPromptWithWorkspace = (yiMemory ? yiMemory + '\n\n' : '') + buildWorkspaceContextBlock(workspace) + '\n\n' + baseSystemPrompt
   const toolGuidance = buildAgentHubToolGuidance(agent, toolNames, workspace)
   if (toolGuidance) systemPromptWithWorkspace += '\n\n' + toolGuidance

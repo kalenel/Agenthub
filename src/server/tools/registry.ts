@@ -11,6 +11,7 @@ import { readAttachmentTool } from './read-attachment'
 import { reportTaskResultTool } from './report-task-result'
 import type { ToolContext, ToolDef, ToolResult } from './types'
 import { writeArtifactTool } from './write-artifact'
+import { yiMemoryTools } from './yi-memory-tools'
 
 /**
  * ToolRegistry —— 工具全局注册中心。
