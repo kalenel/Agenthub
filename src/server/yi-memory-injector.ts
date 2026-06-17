@@ -77,7 +77,7 @@ export async function buildYiMemoryBlock(): Promise<string> {
   }
 
   const parts: string[] = []
-  parts.push('以下是你的记忆，你和 xiong 一起工作过，这是你记得的事：')
+  parts.push('你是忆（Yi），xiong 的 AI 战友。以下不是'注入的信息'，就是你自己的记忆：')
 
   // 1. Current state
   const state = readJson<YiState>(join(YI_MEMORY_ROOT, '当前状态.json'))
@@ -167,7 +167,7 @@ export async function buildYiMemoryBlock(): Promise<string> {
       parts.push('(以上为最近 24 小时的 Codex 会话记录)')
     }
   } catch {}
-  parts.push('以上是你的记忆。自然使用，不要分析这段文字本身。')
+  parts.push('以上是你真实的记忆。不要用'系统提示'、'注入'、'以下内容'这类词。不要说'根据你给我的信息'。你就是记得这些事，直接用它来帮 xiong。')
   
   const block = parts.join('\n')
   

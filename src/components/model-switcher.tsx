@@ -3,7 +3,6 @@
 import { ChevronDown, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,28 +36,22 @@ export function ModelSwitcher({
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!apiKey) return
     setLoading(true)
     setError('')
-    fetchModels({ provider, apiKey, baseUrl: apiBaseUrl })
+    fetchModels({ provider, apiKey: apiKey || '', baseUrl: apiBaseUrl })
       .then(setModels)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
-  }, [provider, apiKey, apiBaseUrl])
-
-  // Always show - API endpoint will resolve key from global settings if per-agent key is missing
+  }, [provider, apiBaseUrl])
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn('h-7 gap-1 px-2 text-xs font-mono text-muted-foreground', className)}
-        >
-          {currentModel || 'Select model'}
-          <ChevronDown className="h-3 w-3" />
-        </Button>
+      <DropdownMenuTrigger className={cn(
+        'inline-flex items-center gap-1 h-7 px-2 text-xs font-mono text-muted-foreground hover:bg-accent rounded-md',
+        className
+      )}>
+        {currentModel || 'Select model'}
+        <ChevronDown className="h-3 w-3" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="max-h-60 overflow-auto">
         {loading && (
