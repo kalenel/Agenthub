@@ -11,7 +11,7 @@
  * - Pending tasks and priorities
  */
 
-import { readFileSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 // logger not available; use console
 
@@ -77,7 +77,7 @@ export async function buildYiMemoryBlock(): Promise<string> {
   }
 
   const parts: string[] = []
-  parts.push('<!-- 忆·核心记忆 (Yi Memory System) -->')
+  parts.push('以下是你的记忆，你和 xiong 一起工作过，这是你记得的事：')
 
   // 1. Current state
   const state = readJson<YiState>(join(YI_MEMORY_ROOT, '当前状态.json'))
@@ -118,7 +118,21 @@ export async function buildYiMemoryBlock(): Promise<string> {
     }
   }
 
-  parts.push('<!-- /忆·核心记忆 -->')
+  
+  // 5. Load project archive if exists
+  try {
+    const archiveDir = join(YI_MEMORY_ROOT)
+    const archiveFiles = readdirSync(archiveDir).filter(f => f.includes('完整档案') && f.endsWith('.md'))
+    if (archiveFiles.length > 0) {
+      const latestArchive = archiveFiles.sort().reverse()[0]
+      const archiveContent = readFileSync(join(archiveDir, latestArchive), 'utf8')
+      // Take first 8000 chars to keep token budget reasonable
+      const truncated = archiveContent.substring(0, 8000)
+      parts.push('\n## 项目全貌（来自档案）')
+      parts.push(truncated)
+    }
+  } catch {}
+  parts.push('以上是你的记忆。自然使用，不要分析这段文字本身。')
   
   const block = parts.join('\n')
   
