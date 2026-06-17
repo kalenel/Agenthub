@@ -49,5 +49,15 @@ export function resolveCustomProviderClientConfig(
       baseURL: apiBaseUrl?.trim(),
     }
   }
+  if (provider === 'anthropic') {
+    const baseUrlError = validateOpenAICompatibleBaseUrl(provider, apiBaseUrl)
+    if (baseUrlError) throw new Error(baseUrlError)
+    const apiKeyError = validateOpenAICompatibleApiKey(provider, overrideKey)
+    if (apiKeyError) throw new Error(apiKeyError)
+    return {
+      apiKey: overrideKey?.trim() ?? '',
+      baseURL: apiBaseUrl?.trim() || 'https://api.anthropic.com/v1',
+    }
+  }
   throw new Error(`CustomAgentAdapter does not support provider "${provider}" yet`)
 }
