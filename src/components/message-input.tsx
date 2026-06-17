@@ -22,6 +22,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { AgentAvatar } from '@/components/agent-avatar'
 import { AttachmentChip, PendingAttachmentChip } from '@/components/attachment-chip'
+import { ModelSwitcher } from '@/components/model-switcher'
 import { QuotedMessage } from '@/components/quoted-message'
 import { SlashCommandHelpDialog } from '@/components/slash-command-help-dialog'
 import { SlashCommandMenu, type SlashCommandItem } from '@/components/slash-command-menu'
@@ -260,6 +261,7 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
   const conversation = useAppStore((s) => s.conversations[conversationId])
   const upsertConversation = useAppStore((s) => s.upsertConversation)
   const agents = useAppStore((s) => s.agents)
+  const [selectedModelId, setSelectedModelId] = useState<string | undefined>(undefined)
   const runningRuns = useTopLevelRunningRuns(conversationId)
   const isRunning = runningRuns.length > 0
   // 计划待审批时，输入框改作「对计划提修改意见」用——即使 orchestrator run 仍在 running 也放开
@@ -736,6 +738,7 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
         mentionedAgentIds: mentionedIds,
         parentMessageId: parentId,
         attachmentIds,
+        modelId: selectedModelId,
       })
       replaceLocalMessageId(tempId, result.messageId)
       upsertReturnedMessages(result.messages)
@@ -942,7 +945,19 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
       )}
 
       <div className="flex items-center gap-2">
-        <Textarea
+        {conv?.agentIds?.[0] && agents[conv.agentIds[0]]?.adapterName === 'custom' && (
+            <div className="flex items-center gap-1 px-3 pt-1">
+              <ModelSwitcher
+                agentId={conv.agentIds[0]}
+                provider={agents[conv.agentIds[0]].modelProvider ?? ''}
+                currentModel={selectedModelId ?? agents[conv.agentIds[0]].modelId ?? ''}
+                apiKey={agents[conv.agentIds[0]].apiKey}
+                apiBaseUrl={agents[conv.agentIds[0]].apiBaseUrl ?? undefined}
+                onModelChange={setSelectedModelId}
+              />
+            </div>
+          )}
+          <Textarea
           ref={textareaRef}
           data-testid="composer-input"
           value={content}

@@ -406,11 +406,32 @@ export async function clearConversationHistory(
   )
 }
 
+export interface FetchModelsResult {
+  models: string[]
+  provider: string
+  baseUrl: string
+}
+
+export async function fetchModels(params: {
+  provider: string
+  baseUrl?: string
+  apiKey: string
+}): Promise<string[]> {
+  const searchParams = new URLSearchParams({ provider: params.provider, apiKey: params.apiKey })
+  if (params.baseUrl) searchParams.set('baseUrl', params.baseUrl)
+  const res = await fetch(`/api/models?${searchParams}`)
+  if (!res.ok) throw new Error('Failed to fetch models')
+  const data = await res.json()
+  if (data.error) throw new Error(data.error)
+  return data.models ?? []
+}
+
 export interface SendMessageBody {
   content: string
   mentionedAgentIds?: string[]
   parentMessageId?: string
   attachmentIds?: string[]
+  modelId?: string
 }
 
 export interface SendMessageResult {

@@ -91,6 +91,8 @@ export interface RunArgs {
   requireTaskReport?: boolean
   /** 父 run 的 AbortSignal — 用于级联中止：parent abort → child abort */
   parentSignal?: AbortSignal
+  /** 覆盖 agent 默认 model，用于对话内实时切换 */
+  modelId?: string
 }
 
 export interface RunResult {
@@ -1836,6 +1838,7 @@ async function buildAdapterInput(
 ): Promise<AdapterInput> {
   const effectiveCwd = getEffectiveCwd(workspace)
   const baseSystemPrompt = systemPromptOverride ?? agent.systemPrompt
+  const effectiveModelId = args.modelId ?? agent.modelId
   const yiMemory = await buildYiMemoryBlock().catch(() => '')
   let systemPromptWithWorkspace = (yiMemory ? yiMemory + '\n\n' : '') + buildWorkspaceContextBlock(workspace) + '\n\n' + baseSystemPrompt
   const toolGuidance = buildAgentHubToolGuidance(agent, toolNames, workspace)
@@ -1904,7 +1907,7 @@ async function buildAdapterInput(
     systemPrompt: systemPromptWithWorkspace,
     apiKey: effectiveApiKey,
     apiBaseUrl: effectiveApiBaseUrl,
-    modelId: agent.modelId,
+    modelId: effectiveModelId,
     toolNames,
     attachments: attachments.length > 0 ? attachments : undefined,
     history: history.length > 0 ? history : undefined,

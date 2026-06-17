@@ -13,6 +13,7 @@ const SendBody = z
     mentionedAgentIds: z.array(z.string()).optional(),
     parentMessageId: z.string().optional(),
     attachmentIds: z.array(z.string()).optional(),
+    modelId: z.string().optional(),
   })
   .refine(
     (d) => d.content.trim().length > 0 || (d.attachmentIds && d.attachmentIds.length > 0),
@@ -40,6 +41,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
       mentionedAgentIds: parsed.data.mentionedAgentIds,
       parentMessageId: parsed.data.parentMessageId,
       attachmentIds: parsed.data.attachmentIds,
+      modelId: parsed.data.modelId,
     })
     return NextResponse.json(result, { status: 202 })
   } catch (err) {

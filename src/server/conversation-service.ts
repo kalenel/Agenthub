@@ -532,6 +532,7 @@ export interface SendMessageArgs {
   mentionedAgentIds?: string[]
   parentMessageId?: string
   attachmentIds?: string[]
+  modelId?: string
 }
 
 export interface SendMessageResult {
@@ -649,6 +650,7 @@ export async function sendMessage(args: SendMessageArgs): Promise<SendMessageRes
       agentId,
       conversationId: args.conversationId,
       triggerMessageId: messageId,
+      modelId: args.modelId,
     })
     runIds.push(runId)
   }
