@@ -600,6 +600,26 @@ export async function sendMessage(args: SendMessageArgs): Promise<SendMessageRes
     .set({ updatedAt: now })
     .where(eq(schema.conversations.id, args.conversationId))
 
+export interface RemoveAgentsArgs {
+  conversationId: string
+  agentIds: string[]
+}
+
+export async function removeAgentsFromConversation(args: RemoveAgentsArgs): Promise<ConversationWithMeta> {
+  const conv = await db.query.conversations.findFirst({
+    where: eq(schema.conversations.id, args.conversationId),
+  })
+  if (!conv) throw new Error("Conversation not found: " + args.conversationId)
+  const remaining = conv.agentIds.filter(function(id) { return !args.agentIds.includes(id) })
+  if (remaining.length === 0) throw new Error("Cannot remove all agents from conversation")
+  const newMode = remaining.length >= 2 ? "group" : "single"
+  const now = Date.now()
+  await db.update(schema.conversations)
+    .set({ agentIds: remaining, mode: newMode, updatedAt: now })
+    .where(eq(schema.conversations.id, args.conversationId))
+  return toConversationWithMeta(Object.assign({}, conv, { agentIds: remaining, mode: newMode }))
+}
+
   // 广播新用户消息：消息已落库，这条事件让其它已连接客户端（如桌面端看手机端发来的消息）实时插入。
   // 发送方自己靠乐观更新 + POST 返回值对账；按 id 幂等，重复收到无副作用。详见 specs/02。
   eventBus.publish({
