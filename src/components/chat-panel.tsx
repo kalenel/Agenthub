@@ -52,6 +52,7 @@ export function ChatPanel() {
     (s) => s.setPendingDispatchPlansForConversation,
   )
   const [addOpen, setAddOpen] = useState(false)
+  const [agentMgmtOpen, setAgentMgmtOpen] = useState(false)
   const handleRemoveAgent = async (agentId: string) => {
     if (!conv) return
     try {
@@ -143,9 +144,34 @@ export function ChatPanel() {
                 </span>
               )}
             </div>
-            <div className="truncate text-xs text-muted-foreground">
-              {conv.mode === 'single' ? '单聊' : '群聊'} · {participantAgents.length} 位 Agent
-            </div>
+            <Popover open={agentMgmtOpen} onOpenChange={setAgentMgmtOpen}>
+              <PopoverTrigger asChild>
+                <button type="button" className="truncate text-xs text-muted-foreground hover:text-foreground transition-colors">
+                  {conv.mode === 'single' ? '单聊' : '群聊'} · {participantAgents.length} 位 Agent
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-56 p-2">
+                <div className="text-xs font-medium text-muted-foreground mb-2">群聊成员</div>
+                {participantAgents.map((agent) => (
+                  <div key={agent.id} className="flex items-center justify-between py-1.5 px-1 rounded hover:bg-accent">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <AgentInfoPopover agent={agent} size="xs" />
+                      <span className="text-sm truncate">{agent.name}</span>
+                    </div>
+                    {participantAgents.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => { handleRemoveAgent(agent.id); setAgentMgmtOpen(false); }}
+                        className="shrink-0 rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        title="移除"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
         <div className="flex min-w-0 max-w-[65%] shrink-0 items-center gap-1 overflow-x-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
