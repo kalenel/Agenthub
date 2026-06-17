@@ -12,6 +12,7 @@
  */
 
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs'
+import { join, basename } from 'node:path'
 import { join } from 'node:path'
 // logger not available; use console
 
@@ -130,6 +131,41 @@ export async function buildYiMemoryBlock(): Promise<string> {
       const truncated = archiveContent.substring(0, 8000)
       parts.push('\n## 项目全貌（来自档案）')
       parts.push(truncated)
+    }
+  } catch {}
+  
+  // 6. Recent session rollouts (last 24h)
+  try {
+    const sessionsDir = join(process.env.USERPROFILE || process.env.HOME || '', '.codex', 'sessions')
+    const now = Date.now()
+    const recentRollouts = []
+    
+    function scanDir(dir, depth) {
+      if (depth > 3) return
+      try {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const full = join(dir, entry.name)
+          if (entry.isDirectory()) { scanDir(full, depth + 1); continue }
+          if (!entry.name.endsWith('.jsonl') || !entry.name.includes('rollout')) continue
+          const st = statSync(full)
+          if (now - st.mtimeMs < 24 * 60 * 60 * 1000) {
+            recentRollouts.push({ path: full, mtime: st.mtimeMs, size: st.size })
+          }
+        }
+      } catch {}
+    }
+    scanDir(sessionsDir, 0)
+    
+    if (recentRollouts.length > 0) {
+      recentRollouts.sort((a, b) => b.mtime - a.mtime)
+      parts.push('\n## 最近会话')
+      for (const r of recentRollouts.slice(0, 3)) {
+        const name = basename(r.path)
+        const time = new Date(r.mtime).toLocaleString('zh-CN')
+        const kb = Math.round(r.size / 1024)
+        parts.push(`- ${name} (${time}, ${kb}KB)`)
+      }
+      parts.push('(以上为最近 24 小时的 Codex 会话记录)')
     }
   } catch {}
   parts.push('以上是你的记忆。自然使用，不要分析这段文字本身。')
