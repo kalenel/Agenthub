@@ -13,7 +13,6 @@
 
 import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs'
 import { join, basename } from 'node:path'
-import { join } from 'node:path'
 // logger not available; use console
 
 const YI_MEMORY_ROOT = process.env.YI_MEMORY_ROOT || 'F:\\忆的记忆'
