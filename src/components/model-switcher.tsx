@@ -46,7 +46,7 @@ export function ModelSwitcher({
       .finally(() => setLoading(false))
   }, [provider, apiKey, apiBaseUrl])
 
-  if (!apiKey) return null
+  // Always show - API endpoint will resolve key from global settings if per-agent key is missing
 
   return (
     <DropdownMenu>

@@ -945,14 +945,14 @@ export function MessageInput({ conversationId }: { conversationId: string }) {
       )}
 
       <div className="flex items-center gap-2">
-        {conv?.agentIds?.[0] && agents[conv.agentIds[0]]?.adapterName === 'custom' && (
+        {conversation?.agentIds?.[0] && agents[conversation.agentIds[0]] && (
             <div className="flex items-center gap-1 px-3 pt-1">
               <ModelSwitcher
-                agentId={conv.agentIds[0]}
-                provider={agents[conv.agentIds[0]].modelProvider ?? ''}
-                currentModel={selectedModelId ?? agents[conv.agentIds[0]].modelId ?? ''}
-                apiKey={agents[conv.agentIds[0]].apiKey}
-                apiBaseUrl={agents[conv.agentIds[0]].apiBaseUrl ?? undefined}
+                agentId={conversation.agentIds[0]}
+                provider={agents[conversation.agentIds[0]].modelProvider ?? ''}
+                currentModel={selectedModelId ?? agents[conversation.agentIds[0]].modelId ?? ''}
+                apiKey={agents[conversation.agentIds[0]].apiKey}
+                apiBaseUrl={agents[conversation.agentIds[0]].apiBaseUrl ?? undefined}
                 onModelChange={setSelectedModelId}
               />
             </div>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppSettings } from '@/server/settings-service'
 import OpenAI from 'openai'
 
 /**
@@ -13,7 +14,12 @@ export async function GET(req: NextRequest) {
   let apiKey = req.nextUrl.searchParams.get('apiKey')
 
   if (!apiKey) {
-    return NextResponse.json({ error: 'Missing apiKey' }, { status: 400 })
+    // Fall back to global settings key for this provider
+    const settings = await getAppSettings()
+    apiKey = settings[getSettingsKey(provider)] ?? undefined
+    if (!apiKey) {
+      return NextResponse.json({ error: 'Missing apiKey (neither per-agent nor global settings)' }, { status: 400 })
+    }
   }
 
   // 通过 Query 传 key 不安全，仅本地使用；生产应走 settings
@@ -40,6 +46,16 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return NextResponse.json({ error: message }, { status: 502 })
+  }
+}
+
+function getSettingsKey(provider: string | null): keyof typeof import('@/db/schema').AppSettingsRow {
+  switch (provider) {
+    case 'deepseek': return 'deepseekApiKey' as any
+    case 'openai': return 'openaiApiKey' as any
+    case 'anthropic': return 'anthropicApiKey' as any
+    case 'volcano-ark': return 'arkApiKey' as any
+    default: return 'openaiApiKey' as any
   }
 }
 
