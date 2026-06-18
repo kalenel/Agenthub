@@ -17,6 +17,7 @@ import { diffTabPendingId, isDiffTabId } from '@/components/pending-writes-panel
 import { PinnedMessagesBar } from '@/components/pinned-messages-bar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Dialog,
   DialogContent,
@@ -146,9 +147,9 @@ export function ChatPanel() {
             </div>
             <Popover open={agentMgmtOpen} onOpenChange={setAgentMgmtOpen}>
               <PopoverTrigger asChild>
-                <button type="button" className="truncate text-xs text-muted-foreground hover:text-foreground transition-colors">
+                <span className="truncate text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                   {conv.mode === 'single' ? '单聊' : '群聊'} · {participantAgents.length} 位 Agent
-                </button>
+                </span>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-56 p-2">
                 <div className="text-xs font-medium text-muted-foreground mb-2">群聊成员</div>

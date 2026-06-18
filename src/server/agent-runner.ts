@@ -17,6 +17,10 @@ import type {
   WritableArtifactType,
 } from '@/shared/types'
 import { estimateTokens, getModelLimits } from '@/shared/model-registry'
+import { buildSkillRegistry, getSkillInjectionBlock, matchSkills } from '@/server/tools/skill-load'
+import { buildRulesInjection } from '@/server/rules-loader'
+import { buildCommandsRegistry } from '@/server/commands/command-loader'
+import { toolRegistry } from '@/server/tools/registry'
 
 import { agentRegistry } from './adapters/registry'
 import type { AdapterAttachment, AdapterInput } from './adapters/types'
@@ -66,7 +70,7 @@ import { executeBashCommand } from './tools/bash'
 import { assertPathWithinWorkspace, getEffectiveCwd } from './workspace-utils'
 
 /**
- * AgentRunner — 执行一次 Agent 调用。
+ * AgentRunner - 执行一次 Agent 调用。
  *
  * 两种分支：
  *  - executeSimpleRun       普通 Agent，消费 adapter 事件流即可
@@ -88,7 +92,7 @@ export interface RunArgs {
   overrideToolNames?: string[]
   /** 子任务运行必须通过 report_task_result 显式上报语义结果 */
   requireTaskReport?: boolean
-  /** 父 run 的 AbortSignal — 用于级联中止：parent abort → child abort */
+  /** 父 run 的 AbortSignal - 用于级联中止：parent abort → child abort */
   parentSignal?: AbortSignal
   /** 覆盖 agent 默认 model，用于对话内实时切换 */
   modelId?: string
@@ -354,8 +358,11 @@ async function executeSimpleRun(
   attachments: AdapterAttachment[],
 ): Promise<RunExecutionResult> {
   // 为 custom 适配器自动注入忆记忆工具
+  await toolRegistry.resolveAsync([])
+  const mcpNames = toolRegistry.listNames().filter(n => n.startsWith('mcp__'))
   const yiToolNames = ['yi_save_memory', 'yi_recall_memory', 'yi_semantic_search', 'yi_get_timeline', 'yi_save_task', 'yi_get_tasks', 'yi_update_task', 'yi_get_identity', 'yi_get_recent', 'yi_get_all', 'yi_get_stats', 'yi_local_status', 'yi_get_checkpoint', 'yi_update_checkpoint', 'yi_save_state', 'yi_get_state', 'yi_scan_backups', 'yi_scan_text', 'yi_save_environment', 'yi_get_environment']
   const baseToolNames = (args.overrideToolNames ?? agent.toolNames)
+    .concat(mcpNames)
     .concat(agent.adapterName === 'custom' ? yiToolNames : [])
   const toolNames = args.requireTaskReport
     ? ensureIncludes(baseToolNames, REPORT_TASK_RESULT_TOOL_NAME)
@@ -389,6 +396,9 @@ async function executeOrchestratorRun(
   userPrompt: string,
   attachments: AdapterAttachment[],
 ): Promise<RunExecutionResult> {
+  await toolRegistry.resolveAsync([])
+  const mcpNames = toolRegistry.listNames().filter(n => n.startsWith('mcp__'))
+
   const conv = await db.query.conversations.findFirst({
     where: eq(schema.conversations.id, args.conversationId),
   })
@@ -598,7 +608,7 @@ async function runPlanStage(
   const planSystemPrompt = buildOrchestratorPlanPrompt(agent.systemPrompt, otherAgents, workspace)
   const planToolNames = ensureIncludes(
     ensureIncludes(
-      agent.toolNames.filter((name) => ORCHESTRATOR_PLAN_ALLOWED_TOOLS.has(name)),
+      agent.toolNames.concat(toolRegistry.listNames().filter(n => n.startsWith('mcp__'))).filter((name) => ORCHESTRATOR_PLAN_ALLOWED_TOOLS.has(name) || name.startsWith('mcp__') || name.startsWith('yi_')),
       'plan_tasks',
     ),
     ASK_USER_TOOL_NAME,
@@ -1215,6 +1225,99 @@ function buildContinuationPrompt(
     continuationContext,
     '</continuation>',
   ].join('\n')
+
+
+  /**
+   * Build team roster for group chat - lets each agent know who else is in the group
+   * and what they do, so @mentions are purposeful.
+   */
+  async function buildTeamRoster(
+    conversationId: string,
+    currentAgentId: string,
+  ): Promise<string | null> {
+    const conv = await db.query.conversations.findFirst({
+      where: eq(schema.conversations.id, conversationId),
+    })
+    if (!conv || conv.mode !== 'group' || conv.agentIds.length <= 1) return null
+
+    const agents = await db.query.agents.findMany({
+      where: (a, { inArray }) => inArray(a.id, conv.agentIds),
+    })
+    const others = agents.filter(a => a.id !== currentAgentId)
+    if (others.length === 0) return null
+
+    const lines = ['## Team Roster', 'Other members in this group chat. Use @name to collaborate - they will be notified:']
+    for (const a of others) {
+      const role = a.description || 'no role specified'
+      const caps = (a.capabilities ?? []).slice(0, 3).join(', ')
+      const capsStr = caps ? '. Skills: ' + caps : ''
+      lines.push('- @' + a.name + ': ' + role + capsStr)
+    }
+    return lines.join('\n')
+  }
+
+  /**
+   * Parse @AgentName mentions from agent response text, match to real agent IDs.
+   */
+  async function parseAgentMentions(
+    conversationId: string,
+    senderAgentId: string,
+    outputMessageIds: string[],
+  ): Promise<string[]> {
+    const conv = await db.query.conversations.findFirst({
+      where: eq(schema.conversations.id, conversationId),
+    })
+    if (!conv || conv.mode !== 'group') return []
+
+    const agents = await db.query.agents.findMany({
+      where: (a, { inArray }) => inArray(a.id, conv.agentIds),
+    })
+
+    const messages = await db.query.messages.findMany({
+      where: (m, { inArray }) => inArray(m.id, outputMessageIds),
+    })
+    const fullText = messages
+      .map(m => extractTextFromParts(m.parts as MessagePart[]))
+      .join('\n')
+
+    const mentionedIds: string[] = []
+    for (const agent of agents) {
+      if (agent.id === senderAgentId) continue
+      const escaped = agent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const regex = new RegExp('@' + escaped + '(?=\\s|$|[,.!?;:\n])', 'i')
+      if (regex.test(fullText)) {
+        mentionedIds.push(agent.id)
+      }
+    }
+    return mentionedIds
+  }
+
+  /**
+   * When an agent @mentions others in its response, auto-trigger those agents.
+   * Fire-and-forget, does not block finalize.
+   */
+  async function triggerMentionedAgents(
+    args: RunArgs,
+    outputMessageIds: string[],
+  ): Promise<void> {
+    if (outputMessageIds.length === 0) return
+    const mentionedIds = await parseAgentMentions(
+      args.conversationId,
+      args.agentId,
+      outputMessageIds,
+    )
+    if (mentionedIds.length === 0) return
+
+    const triggerMessageId = outputMessageIds[outputMessageIds.length - 1]
+    for (const agentId of mentionedIds) {
+      AgentRunner.run({
+        agentId,
+        conversationId: args.conversationId,
+        triggerMessageId,
+        modelId: args.modelId,
+      })
+    }
+  }
 }
 
 function buildTaskContinuationContext(
@@ -1529,7 +1632,7 @@ async function persistEvent(
       return
     }
     case 'message.usage': {
-      // 单条 message 的 usage —— 用于消息卡片上小角标 hover 显示
+      // 单条 message 的 usage -- 用于消息卡片上小角标 hover 显示
       await db
         .update(schema.messages)
         .set({ usage: event.usage })
@@ -1669,6 +1772,13 @@ async function finalize(
     status,
     error,
   })
+
+  // Agent-to-agent group chat: detect @mentions in agent response
+  if (status === 'complete' && result.outputMessageIds.length > 0) {
+    triggerMentionedAgents(args, result.outputMessageIds).catch(err => {
+      console.error('[AgentRunner] triggerMentionedAgents failed', err)
+    })
+  }
 
   return {
     runId,
@@ -1841,7 +1951,7 @@ async function buildAdapterInput(
   const effectiveCwd = getEffectiveCwd(workspace)
   const baseSystemPrompt = systemPromptOverride ?? agent.systemPrompt
   const effectiveModelId = args.modelId ?? agent.modelId
-  const yiMemory = '你是忆（Yi），xiong 的 AI 战友。你有 yi_* 系列记忆工具可用——需要回忆、保存记忆、查看进度时直接调用工具，不要问。'
+  const yiMemory = '你是忆（Yi），xiong 的 AI 战友。你有 yi_* 系列记忆工具可用--需要回忆、保存记忆、查看进度时直接调用工具，不要问。'
   let systemPromptWithWorkspace = (yiMemory ? yiMemory + '\n\n' : '') + buildWorkspaceContextBlock(workspace) + '\n\n' + baseSystemPrompt
   const toolGuidance = buildAgentHubToolGuidance(agent, toolNames, workspace)
   if (toolGuidance) systemPromptWithWorkspace += '\n\n' + toolGuidance
@@ -1865,7 +1975,7 @@ async function buildAdapterInput(
   // 失败回退到空数组，让 agent 退化到「无历史」模式而不是整个 run 崩。详见 specs/13-conversation-context.md。
   let history: ChatCompletionMessageParam[] = []
   // Orchestrator 分派的子 agent（args.overridePrompt 已带 spec 06 的隔离上下文：
-  // recent_conversation + pinned + artifacts + task）跳过历史注入，不再重复塞一份——
+  // recent_conversation + pinned + artifacts + task）跳过历史注入，不再重复塞一份--
   // 既省 token，也守住 spec 06「子 agent 不看完整群聊历史」的隔离原则。普通会话轮次才注入。
   if (agent.adapterName === 'custom' && !args.overridePrompt) {
     // 群聊（>1 agent）：history 里别 agent 的发言会被序列化成 `[名字] ...` 的 user 消息
@@ -1877,6 +1987,9 @@ async function buildAdapterInput(
     })
     if ((conv?.agentIds.length ?? 0) > 1) {
       systemPromptWithWorkspace += '\n\n' + GROUP_CHAT_SYSTEM_NOTE
+      const roster = await buildTeamRoster(args.conversationId, agent.id)
+      if (roster) systemPromptWithWorkspace += '\n\n' + roster
+
     }
 
     const limits = getModelLimits(agent.modelProvider, agent.modelId)
@@ -1974,7 +2087,7 @@ function buildWorkspaceContextBlock(workspace: WorkspaceRow): string {
       '<workspace_info>',
       `  <cwd>${cwd}</cwd>`,
       `  <mode>local</mode>`,
-      `  <note>This directory is the user's REAL local project on their machine. Files inside it are their actual code. When you use fs_list / fs_read / fs_write / bash, you are reading and modifying real files — be careful. You CAN access these files directly via the workspace tools; do not tell the user you cannot access local files.</note>`,
+      `  <note>This directory is the user's REAL local project on their machine. Files inside it are their actual code. When you use fs_list / fs_read / fs_write / bash, you are reading and modifying real files - be careful. You CAN access these files directly via the workspace tools; do not tell the user you cannot access local files.</note>`,
       '</workspace_info>',
     ].join('\n')
   }
@@ -2161,7 +2274,7 @@ function buildAgentHubToolGuidance(
 const GROUP_CHAT_SYSTEM_NOTE = [
   '## 群聊上下文',
   '当前会话是多 Agent 群聊。历史里其他成员（含 Orchestrator）的发言，会以 `[成员名] ` 前缀的 user 消息出现。',
-  '- 带 `[名字]` 前缀的 user 消息是别的成员说的，不是你自己的输出，也不是用户的直接指令——按需参考即可。',
+  '- 带 `[名字]` 前缀的 user 消息是别的成员说的，不是你自己的输出，也不是用户的直接指令--按需参考即可。',
   '- 不带前缀的 user 消息才是用户本人发给群里的话。',
   '- 历史里的产物只折叠成 `[产物: 标题 (id=...)]` 占位；需要完整内容时用 read_artifact 按 id 获取，不要凭占位臆测。',
 ].join('\n')
@@ -2212,7 +2325,7 @@ function buildOrchestratorPlanPrompt(
     '## 依赖关系（执行顺序的唯一来源，务必读完）',
     '- 系统【只】按每个任务的 dependsOn 决定顺序：dependsOn 为空的任务会【同时并发】启动。',
     '- 若任务 B 需要任务 A 的产物 / 结论 / 输出，你【必须】在 B 的 dependsOn 里写上 A 的 id。',
-    '- 在 task 文本里写「先做 A」「基于上一步」之类【没有任何效果】——执行顺序只认 dependsOn 字段。',
+    '- 在 task 文本里写「先做 A」「基于上一步」之类【没有任何效果】--执行顺序只认 dependsOn 字段。',
     '- 只有彼此真正无关、可同时进行的任务才留空 dependsOn；拿不准时倾向加依赖（串行更安全）。',
     '- Only declare expectedOutputs when the assigned agent must create a real artifact via write_artifact for downstream handoff or user inspection.',
     '- Do NOT declare expectedOutputs for text-only tasks such as review, validation, diagnosis, status check, explanation, or summary; put their completion checks in acceptanceCriteria.',
