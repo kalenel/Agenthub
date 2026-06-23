@@ -1,7 +1,7 @@
 'use client'
 
 import { AtSign, CornerUpLeft, Loader2, Pencil, Pin, RotateCcw, Star, Trash2 } from 'lucide-react'
-import { memo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 
 import { AgentAvatar } from '@/components/agent-avatar'
 import { AgentInfoPopover } from '@/components/agent-info-popover'
@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/dialog'
 import { editAndResendMessage, regenerateLastResponse, toggleMessagePin, withdrawMessage } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { MessageRow } from '@/db/schema'
+import type { AgentRow, MessageRow } from '@/db/schema'
 import { PIN_LIMIT_PER_CONVERSATION } from '@/shared/constants'
 import {
   useAppStore,
@@ -32,7 +32,7 @@ import {
 
 function MessageItemImpl({ message }: { message: MessageRow }) {
   const agentsMap = useAppStore((s) => s.agents)
-  const agent = message.agentId ? agentsMap[message.agentId] : null
+  const agent = message.agentId ? agentsMap[message.agentId] ?? null : null
   const dispatch = useDispatchForMessage(message.id)
   const setReplyTarget = useAppStore((s) => s.setReplyTarget)
   const highlightMessage = useAppStore((s) => s.highlightMessage)
@@ -72,10 +72,13 @@ function MessageItemImpl({ message }: { message: MessageRow }) {
         .map((p) => (p.type === 'text' ? p.content : ''))
         .join('\n')
     : ''
-
-  const mentionedAgents = message.mentionedAgentIds
-    .map((id) => agentsMap[id])
-    .filter(Boolean)
+  const mentionedAgents = useMemo(
+    () =>
+      message.mentionedAgentIds
+        .map((id) => agentsMap[id])
+        .filter((agent): agent is AgentRow => Boolean(agent)),
+    [agentsMap, message.mentionedAgentIds],
+  )
 
   const jumpToParent = () => {
     if (!parentMessage) return
@@ -396,3 +399,4 @@ function formatTokenShort(n: number): string {
   if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 1)}k`
   return `${(n / 1_000_000).toFixed(2)}M`
 }
+

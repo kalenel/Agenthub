@@ -100,6 +100,8 @@ export class ClaudeCodeAdapter implements AgentPlatformAdapter {
       workspacePath: getEffectiveCwd(workspace),
       agentId: input.agentId,
       runId: input.runId,
+      subAgentId: input.subAgentId,
+      taskId: input.taskId,
       abortSignal: signal,
     }
     const agenthubMcpServer = createSdkMcpServer({

@@ -39,6 +39,7 @@ export const agents = sqliteTable('agents', {
 
   isBuiltin: integer('is_builtin', { mode: 'boolean' }).notNull().default(false),
   isOrchestrator: integer('is_orchestrator', { mode: 'boolean' }).notNull().default(false),
+  skillNames: text('skill_names', { mode: 'json' }).$type<string[]>().default([]),
   supportsVision: integer('supports_vision', { mode: 'boolean' }).notNull().default(false),
 
   createdAt: integer('created_at').notNull(),

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+﻿import { readFileSync } from 'node:fs'
 
 import OpenAI from 'openai'
 
@@ -48,7 +48,7 @@ export class CustomAgentAdapter implements AgentPlatformAdapter {
 
     const client = buildClient(modelProvider, apiKey, input.apiBaseUrl)
 
-    const toolDefs = toolRegistry.resolve(input.toolNames)
+    const toolDefs = await toolRegistry.resolveAsync(input.toolNames)
     const apiTools = toolDefs.map(toApiTool)
 
     const ctx: ToolContext = {
@@ -66,7 +66,9 @@ export class CustomAgentAdapter implements AgentPlatformAdapter {
 
     const userContent: ChatMessage['content'] = useMultimodal
       ? buildMultimodalUserContent(input.prompt, imageAttachments)
-      : input.prompt
+      : imageAttachments.length > 0
+        ? '[The user sent an image, but you cannot see images. If the user asks about the image, ask them to describe it in text. Do not guess or make up what is in the image.]\n\n' + input.prompt
+        : input.prompt
 
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -94,8 +96,9 @@ export class CustomAgentAdapter implements AgentPlatformAdapter {
       yield baseEvent(input, {
         type: 'message.start',
         messageId,
-        agentId: input.agentId,
-        runId: input.runId,
+      agentId: input.agentId,
+      subAgentId: input.subAgentId,
+      runId: input.runId,
       })
 
       let textPartIndex = -1

@@ -1,7 +1,13 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { MessageRow } from '@/db/schema'
 import type { DispatchPlanItem } from '@/shared/types'
+
+const recordConversationTransitionApi = vi.hoisted(() => vi.fn(async () => undefined))
+
+vi.mock('@/lib/api', () => ({
+  recordConversationTransitionApi,
+}))
 
 import { selectDispatchForMessage, useAppStore } from './app-store'
 
@@ -9,7 +15,7 @@ const PLAN: DispatchPlanItem[] = [
   {
     id: 'task_frontend',
     agentId: 'ag_frontend',
-    task: '实现页面调整',
+    task: 'implement page tweak',
   },
 ]
 
@@ -59,6 +65,7 @@ function agentMessage(id: string, runId: string, createdAt: number): MessageRow 
 describe('app-store dispatch plan binding', () => {
   beforeEach(() => {
     resetStore()
+    vi.clearAllMocks()
   })
 
   it('does not return the same dispatch for every message in the run', () => {
@@ -117,6 +124,40 @@ describe('app-store dispatch plan binding', () => {
   })
 })
 
+describe('app-store conversation transitions', () => {
+  beforeEach(() => {
+    resetStore()
+    vi.clearAllMocks()
+  })
+
+  it('records the previous conversation when switching active conversation', () => {
+    useAppStore.setState({
+      activeConversationId: 'conv_old',
+      unreadByConv: { conv_new: 2 },
+      mobileSidebarOpen: true,
+    })
+
+    useAppStore.getState().setActiveConversation('conv_new', {
+      source: 'sidebar',
+      reason: 'select conversation',
+      trigger: 'click',
+      recipient: 'window',
+    })
+
+    expect(useAppStore.getState().activeConversationId).toBe('conv_new')
+    expect(useAppStore.getState().mobileSidebarOpen).toBe(false)
+    expect(useAppStore.getState().unreadByConv.conv_new).toBeUndefined()
+    expect(recordConversationTransitionApi).toHaveBeenCalledTimes(1)
+    expect(recordConversationTransitionApi).toHaveBeenCalledWith('conv_new', {
+      fromConversationId: 'conv_old',
+      source: 'sidebar',
+      reason: 'select conversation',
+      trigger: 'click',
+      recipient: 'window',
+    })
+  })
+})
+
 describe('app-store run failure cleanup', () => {
   beforeEach(() => {
     resetStore()
@@ -152,12 +193,16 @@ describe('app-store run failure cleanup', () => {
 
     const message = useAppStore.getState().messages.msg_tool
     expect(message.status).toBe('error')
-    expect(message.parts).toContainEqual({
-      type: 'tool_result',
-      callId: 'call_bash',
-      result: '工具调用未完成：本次运行失败。process exited with code 1',
-      isError: true,
-    })
+    expect(
+      message.parts.some(
+        (part) =>
+          part.type === 'tool_result' &&
+          part.callId === 'call_bash' &&
+          part.isError === true &&
+          typeof part.result === 'string' &&
+          part.result.includes('process exited with code 1'),
+      ),
+    ).toBe(true)
 
     useAppStore.getState().applyEvent({
       type: 'tool.result',

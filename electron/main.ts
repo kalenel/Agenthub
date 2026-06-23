@@ -1,17 +1,35 @@
-import { app, BrowserWindow, session, shell } from 'electron'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+
+import { app, BrowserWindow, Menu, Tray, nativeImage, session, shell } from 'electron'
 
 import { setupDataDir } from './paths'
 import { startEmbeddedServer } from './server-bootstrap'
 
-const isDev = process.env.AGENTHUB_DEV === '1'
-const DEV_URL = 'http://localhost:3000'
+app.disableHardwareAcceleration()
 
-// Electron 默认用 package.json 的 `name` 字段（'bytedance-agenthub'）作为 app 名，
-// 用户数据会落在 ~/Library/Application Support/bytedance-agenthub/。覆盖成 productName 'AgentHub'，
-// 让 userData 路径更友好；必须在任何 app.getPath('userData') 调用之前完成。
+const isDev = process.env.AGENTHUB_DEV === '1'
+const DEV_URL = process.env.AGENTHUB_DEV_URL ?? 'http://localhost:3000'
+
+let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+let isQuitting = false
+
 app.setName('AgentHub')
 
-// Single-instance lock：第二次启动 focus 已开的窗口，不开新进程
+function resolveTrayIconPath(): string | null {
+  const candidates = [
+    join(app.getAppPath(), 'electron', 'tray-icon.png'),
+    join(process.cwd(), 'electron', 'tray-icon.png'),
+  ]
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate
+  }
+
+  return null
+}
+
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
@@ -19,18 +37,16 @@ if (!gotLock) {
   app.on('second-instance', () => {
     const wins = BrowserWindow.getAllWindows()
     if (wins.length > 0) {
-      const w = wins[0]
-      if (w.isMinimized()) w.restore()
-      w.focus()
+      const window = wins[0]
+      if (window.isMinimized()) window.restore()
+      window.show()
+      window.focus()
     }
   })
 
-  // 关键时序：DATA_DIR 必须在 server require 业务代码之前注入
   setupDataDir()
 
   app.whenReady().then(async () => {
-    // 用户 shell 里若设了 http_proxy / HTTPS_PROXY，Chromium 会继承它去代理 localhost 请求，
-    // 导致 BrowserWindow 加载 dev URL 时被代理拦截。强制 direct（proxyRules 空）并显式 bypass 本地。
     await session.defaultSession
       .setProxy({ proxyRules: 'direct://', proxyBypassRules: '<local>' })
       .catch((err) => console.error('[AgentHub] setProxy failed', err))
@@ -44,13 +60,14 @@ if (!gotLock) {
       return
     }
 
-    const win = new BrowserWindow({
+    mainWindow = new BrowserWindow({
       width: 1280,
-      height: 800,
+      height: 900,
       minWidth: 980,
-      minHeight: 600,
+      minHeight: 700,
       title: 'AgentHub',
-      backgroundColor: '#0a0a0a',
+      backgroundColor: '#f8f9fa',
+      show: true,
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
@@ -59,14 +76,45 @@ if (!gotLock) {
       },
     })
 
-    // a) 外链交给 OS 默认浏览器，不在窗口里新开
-    win.webContents.setWindowOpenHandler(({ url: target }) => {
+    const revealWindow = () => {
+      if (!mainWindow) return
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      if (!mainWindow.isVisible()) mainWindow.show()
+      mainWindow.focus()
+    }
+
+    const hideWindow = () => {
+      if (!mainWindow) return
+      mainWindow.hide()
+    }
+
+    const trayIconPath = resolveTrayIconPath()
+    const trayIcon = trayIconPath ? nativeImage.createFromPath(trayIconPath) : nativeImage.createEmpty()
+    if (trayIcon.isEmpty()) {
+      console.warn('[AgentHub] tray icon image is empty')
+    }
+
+    tray = new Tray(trayIcon)
+    tray.setImage(trayIcon)
+    tray.setToolTip('AgentHub')
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: 'Show AgentHub', click: revealWindow },
+        { type: 'separator' },
+        {
+          label: 'Quit AgentHub',
+          click: () => app.quit(),
+        },
+      ]),
+    )
+    tray.on('click', revealWindow)
+
+    mainWindow.webContents.setWindowOpenHandler(({ url: target }) => {
       shell.openExternal(target).catch(() => {})
       return { action: 'deny' }
     })
 
-    // b) 拦截站外导航；本地 server origin 通过
-    win.webContents.on('will-navigate', (event, target) => {
+    mainWindow.webContents.on('will-navigate', (event, target) => {
       const origin = new URL(target).origin
       if (origin !== new URL(url).origin) {
         event.preventDefault()
@@ -74,10 +122,44 @@ if (!gotLock) {
       }
     })
 
-    await win.loadURL(url)
+    mainWindow.once('ready-to-show', revealWindow)
+    mainWindow.webContents.once('did-finish-load', revealWindow)
+    mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+      console.error('[AgentHub] failed to load', { errorCode, errorDescription, validatedURL })
+      revealWindow()
+    })
+    setTimeout(revealWindow, 5000)
+
+    mainWindow.on('close', (event) => {
+      if (isQuitting) return
+      if (tray) {
+        event.preventDefault()
+        hideWindow()
+      }
+    })
+
+    mainWindow.on('closed', () => {
+      mainWindow = null
+    })
+
+    try {
+      await mainWindow.loadURL(url)
+    } catch (err) {
+      console.error('[AgentHub] loadURL failed', err)
+    } finally {
+      revealWindow()
+    }
+  })
+
+  app.on('before-quit', () => {
+    isQuitting = true
+    tray?.destroy()
+    tray = null
   })
 
   app.on('window-all-closed', () => {
-    app.quit()
+    if (process.platform !== 'darwin') {
+      app.quit()
+    }
   })
 }

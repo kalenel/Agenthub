@@ -5,10 +5,12 @@ import { z } from 'zod'
 import { db, schema } from '@/db/client'
 import { verifyInternalToolToken } from '@/server/internal-tool-auth'
 import { askUserTool } from '@/server/tools/ask-user'
+import { closeAgentTool, listAgentsTool, resumeAgentTool, sendAgentInputTool, waitAgentTool } from '@/server/tools/multi-agent-collab'
 import { deployArtifactTool } from '@/server/tools/deploy-artifact'
 import { deployWorkspaceTool } from '@/server/tools/deploy-workspace'
 import { fsListTool } from '@/server/tools/fs-list'
 import { readArtifactTool } from '@/server/tools/read-artifact'
+import { reportTaskProgressTool } from '@/server/task-progress-report'
 import { reportTaskResultTool } from '@/server/tools/report-task-result'
 import type { ToolContext } from '@/server/tools/types'
 import { writeArtifactTool } from '@/server/tools/write-artifact'
@@ -23,7 +25,13 @@ const EXPOSED_TOOLS = {
   deploy_workspace: deployWorkspaceTool,
   ask_user: askUserTool,
   report_task_result: reportTaskResultTool,
+  report_task_progress: reportTaskProgressTool,
   fs_list: fsListTool,
+  close_agent: closeAgentTool,
+  resume_agent: resumeAgentTool,
+  send_agent_input: sendAgentInputTool,
+  wait_agent: waitAgentTool,
+  list_agents: listAgentsTool,
 }
 
 const BodySchema = z.object({
@@ -32,6 +40,8 @@ const BodySchema = z.object({
   conversationId: z.string().min(1),
   agentId: z.string().min(1),
   runId: z.string().min(1),
+  taskId: z.string().min(1).optional(),
+  subAgentId: z.string().min(1).optional(),
 })
 
 export async function POST(req: Request) {
@@ -44,7 +54,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: `Invalid body: ${parsed.error.message}` }, { status: 400 })
   }
 
-  const { toolName, args, conversationId, agentId, runId } = parsed.data
+  const { toolName, args, conversationId, agentId, runId, taskId, subAgentId } = parsed.data
   const tool = EXPOSED_TOOLS[toolName as keyof typeof EXPOSED_TOOLS]
   if (!tool) {
     return NextResponse.json({ ok: false, error: `Tool is not exposed to Codex: ${toolName}` }, { status: 403 })
@@ -62,6 +72,8 @@ export async function POST(req: Request) {
     workspacePath: getEffectiveCwd(workspace),
     agentId,
     runId,
+    subAgentId,
+    taskId,
     abortSignal: req.signal,
   }
 

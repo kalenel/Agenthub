@@ -31,6 +31,7 @@ export function NewConversationDialog({
   const agents = useAgentList()
   const upsertConversation = useAppStore((s) => s.upsertConversation)
   const setActive = useAppStore((s) => s.setActiveConversation)
+  const activeConversationId = useAppStore((s) => s.activeConversationId)
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [creating, setCreating] = useState(false)
@@ -85,7 +86,13 @@ export function NewConversationDialog({
         boundPath: workspaceMode === 'local' ? boundPath.trim() : undefined,
       })
       upsertConversation(conv)
-      setActive(conv.id)
+      setActive(conv.id, {
+        source: 'new-conversation-dialog',
+        reason: 'create conversation',
+        fromConversationId: activeConversationId,
+        trigger: conv.id,
+        recipient: 'window',
+      })
       reset()
       onOpenChange(false)
     } catch (err) {

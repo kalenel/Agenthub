@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
 import { createCustomAgent, listAgentsOrdered } from '@/server/agent-service'
@@ -24,6 +24,7 @@ const CreateBody = z
     supportsVision: z.boolean().optional(),
     apiKey: z.string().optional(),
     apiBaseUrl: z.string().optional(),
+    skillNames: z.array(z.string()).optional(),
   })
   .refine(
     (d) => d.adapterName !== 'custom' || (d.modelProvider && d.modelId),

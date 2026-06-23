@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { Cpu, MessageSquareText, SlidersHorizontal, Sparkles, User, Wrench } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import type { AgentRow } from '@/db/schema'
 import {
+  fetchSkills,
   createAgent,
   updateAgent,
   type CreateAgentBody,
@@ -82,20 +83,42 @@ export function CreateAgentDialog({
   const [adapterKind, setAdapterKind] = useState<AdapterKind>('custom')
   const [provider, setProvider] = useState<Provider>('deepseek')
   const [modelId, setModelId] = useState(PROVIDER_DEFAULTS.deepseek.defaultModel)
-  const [toolNames, setToolNames] = useState<Set<string>>(new Set(DEFAULT_CUSTOM_AGENT_TOOLS))
+  const [skillNames, setSkillNames] = useState<string[]>([])
+  const [availableSkills, setAvailableSkills] = useState<Array<{name: string; description: string}>>([])
+    const [toolNames, setToolNames] = useState<Set<string>>(new Set(DEFAULT_CUSTOM_AGENT_TOOLS))
   const [supportsVision, setSupportsVision] = useState(true)
   const [apiKey, setApiKey] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [agentPresets, setAgentPresets] = useState<Array<{name:string;description:string;systemPrompt:string;toolNames:string[];skillNames:string[]}>>([])
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<AgentTab>('basic')
   const [createStep, setCreateStep] = useState<CreateStep>('choose')
+
+  useEffect(() => {
+    if (!open) return
+
+    let cancelled = false
+    fetchSkills()
+      .then((skills) => {
+        if (!cancelled) {
+          setAvailableSkills(skills.map((skill) => ({ name: skill.name, description: skill.description })))
+        }
+      })
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+  useEffect(() => { fetch(window.location.origin + '/api/agent-presets').then(r => r.json()).then(d => setAgentPresets(d.presets || [])).catch(() => {}) }, [])
 
   // 每次打开 / 切换 agent 时，重置表单到该 agent 的当前值（或创建态的默认）。
   useEffect(() => {
     if (!open) return
     if (agent) {
+      setSkillNames(agent.skillNames ?? [])
       const kind: AdapterKind =
         agent.adapterName === 'claude-code'
           ? 'claude-code'
@@ -129,7 +152,8 @@ export function CreateAgentDialog({
       setSystemPrompt(DEFAULT_CUSTOM_SYSTEM_PROMPT)
       setProvider('deepseek')
       setModelId(PROVIDER_DEFAULTS.deepseek.defaultModel)
-      setToolNames(new Set(DEFAULT_CUSTOM_AGENT_TOOLS))
+      setSkillNames([])
+        setToolNames(new Set(DEFAULT_CUSTOM_AGENT_TOOLS))
       setSupportsVision(true)
       setApiKey('')
       setApiBaseUrl('')
@@ -224,6 +248,7 @@ export function CreateAgentDialog({
         modelId: draft.modelId?.trim() || undefined,
         toolNames: isSdkAgent ? [] : draft.toolNames,
         supportsVision: draft.supportsVision,
+        skillNames,
       }
       const created = await createAgent(body)
       upsertAgent(created)
@@ -286,6 +311,7 @@ export function CreateAgentDialog({
           supportsVision,
           apiKey: trimmedApiKey || null,
           apiBaseUrl: trimmedApiBaseUrl || null,
+          skillNames,
         }
         const updated = await updateAgent(agent.id, patch)
         upsertAgent(updated)
@@ -331,6 +357,31 @@ export function CreateAgentDialog({
           <DialogTitle>{isEdit ? '编辑 Agent' : '创建 Agent'}</DialogTitle>
           <DialogDescription>{descriptionText}</DialogDescription>
         </DialogHeader>
+
+          {/* Preset loader */}
+          {showDetailForm && agentPresets.length > 0 && (
+            <div className="flex items-center gap-2 px-0.5 mb-2">
+              <span className="text-xs text-muted-foreground shrink-0">预设：</span>
+              <select
+                className="flex-1 rounded-md border bg-background px-2 py-1 text-xs"
+                defaultValue=""
+                onChange={(e) => {
+                  const preset = agentPresets.find(p2 => p2.name === e.target.value)
+                  if (!preset) return
+                  setName(preset.name)
+                  setDescription(preset.description)
+                  setSystemPrompt(preset.systemPrompt)
+                  setToolNames(new Set(preset.toolNames))
+                  setSkillNames(preset.skillNames || [])
+                }}
+              >
+                <option value="" disabled>加载预设 Agent...</option>
+                {agentPresets.map(p2 => (
+                  <option key={p2.name} value={p2.name}>{p2.name} - {p2.description.substring(0, 40)}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
         {!showDetailForm ? (
           createStep === 'choose' ? (
@@ -723,6 +774,46 @@ export function CreateAgentDialog({
                   </div>
                 )}
 
+
+                {/* ─── Skills ─── */}
+                <div className="grid grid-cols-[80px_1fr] items-start gap-3">
+                  <Label>Skills</Label>
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {skillNames.length === 0 && (
+                        <span className="text-[11px] text-muted-foreground">未启用（留空则暴露全部 116 个 skill）</span>
+                      )}
+                      {skillNames.map((name) => (
+                        <span key={name} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary">
+                          {name}
+                          <button type="button" onClick={() => setSkillNames(skillNames.filter(s => s !== name))} className="ml-0.5 text-primary/60 hover:text-primary">&times;</button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="max-h-36 overflow-y-auto rounded-md border">
+                      {availableSkills.filter(s => !skillNames.includes(s.name)).slice(0, 30).map((skill) => (
+                        <button
+                          key={skill.name}
+                          type="button"
+                          onClick={() => setSkillNames([...skillNames, skill.name])}
+                          className="flex w-full items-start gap-2 px-2.5 py-1.5 text-left text-[11px] hover:bg-accent border-b border-border/50 last:border-0"
+                        >
+                          <span className="shrink-0 mt-0.5 text-muted-foreground">+</span>
+                          <div className="min-w-0">
+                            <div className="font-medium truncate">{skill.name}</div>
+                            <div className="text-[10px] text-muted-foreground line-clamp-1">{skill.description}</div>
+                          </div>
+                        </button>
+                      ))}
+                      {availableSkills.filter(s => !skillNames.includes(s.name)).length === 0 && skillNames.length > 0 && (
+                        <div className="px-2.5 py-3 text-[11px] text-muted-foreground text-center">全部已启用</div>
+                      )}
+                      {availableSkills.length === 0 && (
+                        <div className="px-2.5 py-3 text-[11px] text-muted-foreground text-center">加载中…</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
                 <div className="grid grid-cols-[80px_1fr] items-start gap-3">
                   <Label required>System Prompt</Label>
                   <Textarea
@@ -835,3 +926,4 @@ function Label({ children, required }: { children: React.ReactNode; required?: b
     </div>
   )
 }
+

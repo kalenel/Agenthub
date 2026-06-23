@@ -11,15 +11,21 @@ export function adapterSessionKey(conversationId: string, agentId: string): stri
   return `${conversationId}:${agentId}`
 }
 
+function clearSessionByConversation(store: Map<string, string>, conversationId: string): void {
+  const exactKey = conversationId
+  const prefix = `${conversationId}:`
+  for (const key of Array.from(store.keys())) {
+    if (key === exactKey || key.startsWith(prefix)) store.delete(key)
+  }
+}
+
 export const claudeCodeSessions = createAdapterSessionStore('claude-code')
 export const codexSessions = createAdapterSessionStore('codex')
 
 export function clearClaudeCodeSession(conversationId: string): void {
-  claudeCodeSessions.delete(conversationId)
+  clearSessionByConversation(claudeCodeSessions, conversationId)
 }
 
 export function clearCodexSession(conversationId: string): void {
-  for (const key of codexSessions.keys()) {
-    if (key.startsWith(`${conversationId}:`)) codexSessions.delete(key)
-  }
+  clearSessionByConversation(codexSessions, conversationId)
 }

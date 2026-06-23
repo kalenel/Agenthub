@@ -74,6 +74,15 @@ When a command approval gate is triggered, AgentHub MUST publish a pending comma
 - **THEN** AgentHub publishes `bash_command.resolved`
 - **AND** frontend reducers remove that pending command id.
 
+### Requirement: Dispatch progress events SHALL update running task UI
+
+When a dispatched sub-task reports in-flight progress, AgentHub MUST publish a `dispatch.progress` event so the store and task card can surface the latest summary, optional percent, optional next step, and optional blockers.
+
+#### Scenario: Running task reports progress
+- **WHEN** a dispatched sub-task calls `report_task_progress`
+- **THEN** AgentRunner publishes `dispatch.progress`
+- **AND** frontend reducers store the latest progress by task id
+- **AND** the task card renders the current progress while the task is running.
 ### Requirement: Errors SHALL be visible in conversation state
 
 Failures MUST be represented in both AgentRun status and conversation-visible message content.

@@ -7,6 +7,8 @@ import type {
   ContextSummaryRow,
   MessageRow,
 } from '@/db/schema'
+import type { SubAgentHandle } from '@/shared/types'
+import type { AgentConfigDraft, AgentDraftRequest } from '@/shared/agent-builder-config'
 import type {
   AskUserAnswer,
   DeployCandidateRecord,
@@ -16,7 +18,6 @@ import type {
   PendingQuestion,
   PendingWrite,
 } from '@/shared/types'
-import type { AgentConfigDraft, AgentDraftRequest } from '@/shared/agent-builder-config'
 
 export interface ArtifactListItem {
   id: string
@@ -39,7 +40,7 @@ async function json<T>(req: Promise<Response>): Promise<T> {
   return res.json() as Promise<T>
 }
 
-// ─── Agents ─────────────────────────────────────
+// 锟斤拷锟斤拷锟斤拷 Agents 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export async function fetchAgents(): Promise<AgentRow[]> {
   const { agents } = await json<{ agents: AgentRow[] }>(fetch('/api/agents'))
   return agents
@@ -51,17 +52,18 @@ export interface CreateAgentBody {
   description: string
   capabilities: string[]
   systemPrompt: string
-  /** 默认 'custom'。SDK adapter 使用各自内置工具集 */
+  /** 默锟斤拷 'custom'锟斤拷SDK adapter 使锟矫革拷锟斤拷锟斤拷锟矫癸拷锟竭硷拷 */
   adapterName?: 'custom' | 'claude-code' | 'codex'
-  /** custom: required；SDK adapter: 忽略 */
+  /** custom: required锟斤拷SDK adapter: 锟斤拷锟斤拷 */
   modelProvider?: 'anthropic' | 'openai' | 'deepseek' | 'volcano-ark' | 'openai-compatible'
-  /** custom: required；SDK adapter: 可选，默认 SDK 默认模型 */
+  /** custom: required锟斤拷SDK adapter: 锟斤拷选锟斤拷默锟斤拷 SDK 默锟斤拷模锟斤拷 */
   modelId?: string
   toolNames: string[]
   supportsVision?: boolean
   apiKey?: string
-  /** 自定义 API base URL。Claude/Codex 对 endpoint 协议兼容性要求不同；空走默认 */
+  /** 锟皆讹拷锟斤拷 API base URL锟斤拷Claude/Codex 锟斤拷 endpoint 协锟斤拷锟斤拷锟斤拷锟揭拷锟酵拷锟斤拷锟斤拷锟侥拷锟?*/
   apiBaseUrl?: string
+  skillNames?: string[]
 }
 
 export async function createAgent(body: CreateAgentBody): Promise<AgentRow> {
@@ -89,14 +91,36 @@ export async function createAgentDraft(body: AgentDraftRequest): Promise<AgentCo
 export type UpdateAgentBody = Partial<
   Omit<CreateAgentBody, 'avatar' | 'apiKey' | 'apiBaseUrl' | 'modelId'>
 > & {
-  // SDK adapter 可用 null 清空，表示走 SDK 默认模型；custom 仍必须有非空 modelId
+  // SDK adapter 锟斤拷锟斤拷 null 锟斤拷眨锟斤拷锟绞撅拷锟?SDK 默锟斤拷模锟酵ｏ拷custom 锟皆憋拷锟斤拷锟叫非匡拷 modelId
   modelId?: string | null
-  // 显式 null 表示清除自定义 key；undefined 表示不改
+  // 锟斤拷式 null 锟斤拷示锟斤拷锟斤拷远锟斤拷锟?key锟斤拷undefined 锟斤拷示锟斤拷锟斤拷
   apiKey?: string | null
-  // 同上
+  // 同锟斤拷
   apiBaseUrl?: string | null
+  skillNames?: string[]
 }
 
+
+export interface SkillDef {
+  name: string
+  description: string
+  source: string
+  body: string
+}
+
+export async function fetchSkills(): Promise<SkillDef[]> {
+  try {
+    const skillsUrl =
+      typeof window !== 'undefined'
+        ? new URL('/api/skills', window.location.origin).toString()
+        : '/api/skills'
+    const data = await json<{ skills: SkillDef[] }>(fetch(skillsUrl))
+    return data.skills ?? []
+  } catch (error) {
+    console.error('[api] fetchSkills failed', error)
+    return []
+  }
+}
 export async function updateAgent(agentId: string, patch: UpdateAgentBody): Promise<AgentRow> {
   const { agent } = await json<{ agent: AgentRow }>(
     fetch(`/api/agents/${agentId}`, {
@@ -112,7 +136,7 @@ export async function deleteAgent(agentId: string): Promise<void> {
   await json<{ ok: true }>(fetch(`/api/agents/${agentId}`, { method: 'DELETE' }))
 }
 
-// ─── Conversations ──────────────────────────────
+// 锟斤拷锟斤拷锟斤拷 Conversations 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export async function fetchConversations(): Promise<ConversationWithMeta[]> {
   const { conversations } = await json<{ conversations: ConversationWithMeta[] }>(
     fetch('/api/conversations'),
@@ -172,6 +196,31 @@ export async function renameConversation(
   return conversation
 }
 
+
+export interface ConversationTransitionLogInput {
+  fromConversationId?: string | null
+  source: string
+  reason: string
+  trigger?: string | null
+  recipient?: 'model' | 'subagent' | 'window' | 'ui' | 'search'
+}
+
+export async function recordConversationTransitionApi(
+  conversationId: string,
+  input: ConversationTransitionLogInput,
+): Promise<void> {
+  await json<{ ok: true }>(
+    fetch('/api/yi-memory', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'record_transition',
+        conversationId,
+        ...input,
+      }),
+    }),
+  )
+}
 export async function togglePinConversation(conversationId: string): Promise<ConversationWithMeta> {
   const { conversation } = await json<{ conversation: ConversationWithMeta }>(
     fetch(`/api/conversations/${conversationId}`, {
@@ -210,7 +259,7 @@ export async function setFsWriteApprovalMode(
   return conversation
 }
 
-// ─── Pending writes (fs_write review mode) ─────
+// 锟斤拷锟斤拷锟斤拷 Pending writes (fs_write review mode) 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export async function fetchPendingWrites(conversationId: string): Promise<PendingWrite[]> {
   const { pendingWrites } = await json<{ pendingWrites: PendingWrite[] }>(
     fetch(`/api/conversations/${conversationId}/pending-writes`),
@@ -244,7 +293,7 @@ export async function rejectPendingWrite(
   )
 }
 
-// ─── Pending bash commands ─────
+// 锟斤拷锟斤拷锟斤拷 Pending bash commands 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export async function fetchPendingBashCommands(
   conversationId: string,
 ): Promise<PendingBashCommand[]> {
@@ -280,7 +329,7 @@ export async function rejectPendingBashCommand(
   )
 }
 
-// ─── Pending questions (ask_user) ───────────────
+// 锟斤拷锟斤拷锟斤拷 Pending questions (ask_user) 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export async function fetchPendingQuestions(conversationId: string): Promise<PendingQuestion[]> {
   const { pendingQuestions } = await json<{ pendingQuestions: PendingQuestion[] }>(
     fetch(`/api/conversations/${conversationId}/pending-questions`),
@@ -302,8 +351,8 @@ export async function submitQuestionAnswers(
   )
 }
 
-// ─── Messages ───────────────────────────────────
-// ─── Pending dispatch plans (Orchestrator plan review) ───
+// 锟斤拷锟斤拷锟斤拷 Messages 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
+// 锟斤拷锟斤拷锟斤拷 Pending dispatch plans (Orchestrator plan review) 锟斤拷锟斤拷锟斤拷
 export async function fetchPendingDispatchPlans(
   conversationId: string,
 ): Promise<PendingDispatchPlan[]> {
@@ -360,7 +409,7 @@ export async function fetchMessages(conversationId: string): Promise<MessageRow[
   return messages
 }
 
-// ─── Search ──────────────────────────────────────
+// 锟斤拷锟斤拷锟斤拷 Search 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export interface SearchApiResult {
   hits: Array<{
     messageId: string
@@ -493,7 +542,7 @@ export async function deployConversationArtifact(
   )
 }
 
-// ─── Runs ───────────────────────────────────────
+// 锟斤拷锟斤拷锟斤拷 Runs 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export interface CompactConversationResult {
   summary: ContextSummaryRow
   message: MessageRow
@@ -511,7 +560,7 @@ export async function abortRun(runId: string): Promise<void> {
   await json<{ ok: true }>(fetch(`/api/runs/${runId}/abort`, { method: 'POST' }))
 }
 
-// ─── Messages: withdraw / edit ──────────────────
+// 锟斤拷锟斤拷锟斤拷 Messages: withdraw / edit 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export interface WithdrawResult {
   deletedMessageIds: string[]
   deletedArtifactIds: string[]
@@ -600,7 +649,7 @@ export async function toggleMessagePin(
   )
 }
 
-// ─── Filesystem (DirPicker) ────────────────────
+// 锟斤拷锟斤拷锟斤拷 Filesystem (DirPicker) 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export interface ListDirResult {
   path: string
   parent: string | null
@@ -619,7 +668,7 @@ export async function listDirectory(targetPath?: string): Promise<ListDirResult>
   return json<ListDirResult>(fetch(`/api/fs/listdir${qs}`))
 }
 
-// ─── Filesystem (conversation-scoped, 文件浏览器面板用) ────────
+// 锟斤拷锟斤拷锟斤拷 Filesystem (conversation-scoped, 锟侥硷拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷) 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export interface WorkspaceListResult {
   relPath: string
   absolutePath: string
@@ -674,7 +723,7 @@ export async function workspaceWriteFile(
   )
 }
 
-// ─── Artifacts ─────────────────────────────────
+// 锟斤拷锟斤拷锟斤拷 Artifacts 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export async function fetchArtifacts(): Promise<ArtifactListItem[]> {
   const { artifacts } = await json<{ artifacts: ArtifactListItem[] }>(fetch('/api/artifacts'))
   return artifacts
@@ -694,7 +743,7 @@ export async function fetchArtifactVersions(artifactId: string): Promise<Artifac
   return versions
 }
 
-/** 以 artifactId 为父，提交编辑后的内容为新版本（version+1）；返回新产物行。 */
+/** 锟斤拷 artifactId 为锟斤拷锟斤拷锟结交锟洁辑锟斤拷锟斤拷锟斤拷锟轿拷掳姹撅拷锟絭ersion+1锟斤拷锟斤拷锟斤拷锟斤拷锟铰诧拷锟斤拷锟叫★拷 */
 export async function createArtifactVersion(
   artifactId: string,
   body: { content: unknown; title?: string },
@@ -715,7 +764,7 @@ export async function deleteArtifact(artifactId: string): Promise<void> {
   )
 }
 
-// ─── Attachments ───────────────────────────────
+// 锟斤拷锟斤拷锟斤拷 Attachments 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export async function fetchAttachments(conversationId: string): Promise<AttachmentRow[]> {
   const { attachments } = await json<{ attachments: AttachmentRow[] }>(
     fetch(`/api/conversations/${conversationId}/attachments`),
@@ -749,7 +798,7 @@ export function attachmentDownloadUrl(attachmentId: string): string {
   return `/api/attachments/${attachmentId}`
 }
 
-// ─── Usage / Analytics ─────────────────────────────
+// 锟斤拷锟斤拷锟斤拷 Usage / Analytics 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export interface UsageBucket {
   inputTokens: number
   outputTokens: number
@@ -778,7 +827,7 @@ export async function fetchUsageSummary(): Promise<UsageSummary> {
   return json<UsageSummary>(fetch('/api/usage/summary'))
 }
 
-// ─── Mobile companion connection hints ─────────────
+// 锟斤拷锟斤拷锟斤拷 Mobile companion connection hints 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export interface ConnectionHint {
   kind: 'tailscale' | 'lan' | 'local'
   label: string
@@ -792,7 +841,7 @@ export async function fetchConnectionHints(): Promise<ConnectionHint[]> {
   return hints
 }
 
-// ─── App Settings (全局 API key) ───────────────
+// 锟斤拷锟斤拷锟斤拷 App Settings (全锟斤拷 API key) 锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
 export async function fetchAppSettings(): Promise<AppSettingsRow> {
   const { settings } = await json<{ settings: AppSettingsRow }>(fetch('/api/settings'))
   return settings
@@ -831,9 +880,14 @@ export async function regenerateMobileDeviceToken(): Promise<AppSettingsRow> {
 
 export async function removeAgentsFromConversation(conversationId: string, removeAgentIds: string[]): Promise<any> {
   const res = await fetch(`/api/conversations/${conversationId}`, {
-    method: "PATCH", headers: { "Content-Type": "application/json" },
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ removeAgentIds }),
-  });
-  const { conversation } = await res.json();
-  return conversation;
+  })
+  const { conversation } = await res.json()
+  return conversation
+}
+
+export async function fetchSubAgents(conversationId: string): Promise<SubAgentHandle[]> {
+  const { subAgents } = await json<{ subAgents: SubAgentHandle[] }>(fetch(`/api/conversations/${conversationId}/sub-agents`))
+  return subAgents
 }

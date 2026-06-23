@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   // Electron 打包用：生成 .next/standalone 自包含 server（详见 Spec 12 §2 / §6）
   output: 'standalone',
 
-  // 不让 webpack bundle native / SDK 依赖；运行时走 require/import，保留 native binding 与子进程能力
+  // 不让 webpack bundle native / SDK 依赖；运行时按 require/import，保留 native binding 与子进程能力
   serverExternalPackages: [
     'better-sqlite3',
     '@anthropic-ai/claude-agent-sdk',
@@ -40,6 +40,10 @@ const nextConfig: NextConfig = {
       'apps/**',
       'dist-electron/**',
       'electron/**',
+      'F:/忆的记忆/**',
+      'F:\\忆的记忆\\**',
+      'C:/Users/xiong/Documents/Codex/忆的记忆/**',
+      'C:\\Users\\xiong\\Documents\\Codex\\忆的记忆\\**',
       'next.config.ts',
       'openspec/**',
       'packages/**',

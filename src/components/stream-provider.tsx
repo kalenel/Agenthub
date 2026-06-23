@@ -1,16 +1,16 @@
-'use client'
+﻿'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import type { StreamEvent } from '@/shared/types'
 import { useAppStore } from '@/stores/app-store'
 
 /**
- * StreamProvider — 全局唯一 SSE 连接，把 /api/stream 推过来的事件
- * 转发到 Zustand store。详见 specs/02-stream-events.md §SSE 编码。
+ * StreamProvider — 全局唯一 SSE 连接。
  *
- * 在 layout.tsx 中挂载一次。React StrictMode 在 dev 下会双 mount，
- * 这里用 module 级 ref 防止重复连接。
+ * 用 requestAnimationFrame 批量处理所有事件：
+ * 每帧攒一波一次性 apply，最多 60fps 状态更新，
+ * 多 Agent 同时输出也不会造成渲染风暴。
  */
 
 let activeSource: EventSource | null = null
@@ -19,6 +19,18 @@ let refCount = 0
 export function StreamProvider({ children }: { children: React.ReactNode }) {
   const applyEvent = useAppStore((s) => s.applyEvent)
   const setStreamConnected = useAppStore((s) => s.setStreamConnected)
+  const batchRef = useRef<StreamEvent[]>([])
+  const rafRef = useRef<number | null>(null)
+
+  const flushBatch = () => {
+    rafRef.current = null
+    const events = batchRef.current
+    batchRef.current = []
+    if (events.length === 0) return
+    for (const ev of events) {
+      applyEvent(ev)
+    }
+  }
 
   useEffect(() => {
     refCount++
@@ -26,14 +38,9 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
     if (!activeSource) {
       activeSource = new EventSource('/api/stream')
 
-      activeSource.onopen = () => {
-        setStreamConnected(true)
-      }
+      activeSource.onopen = () => setStreamConnected(true)
 
-      activeSource.onerror = () => {
-        // EventSource 会自动重连，无需我们做事
-        setStreamConnected(false)
-      }
+      activeSource.onerror = () => setStreamConnected(false)
 
       activeSource.onmessage = (e) => {
         let parsed: unknown
@@ -50,14 +57,21 @@ export function StreamProvider({ children }: { children: React.ReactNode }) {
           return
         }
 
-        applyEvent(parsed as StreamEvent)
+        // 攒入帧级批次
+        batchRef.current.push(parsed as StreamEvent)
+        if (!rafRef.current) {
+          rafRef.current = requestAnimationFrame(flushBatch)
+        }
       }
     }
 
     return () => {
       refCount--
-      // 全部组件都卸载时关闭，避免 dev 模式 StrictMode 双 mount 反复断开
       if (refCount <= 0) {
+        if (rafRef.current) {
+          cancelAnimationFrame(rafRef.current)
+          flushBatch()
+        }
         activeSource?.close()
         activeSource = null
         refCount = 0

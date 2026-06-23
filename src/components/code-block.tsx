@@ -10,12 +10,13 @@ interface CodeBlockProps {
   code: string
   language: string
   className?: string
+  streaming?: boolean
 }
 
 /**
  * Shiki 双主题代码块。第一次渲染先 fallback 纯 pre，异步加载后替换为 highlight HTML。
  */
-export function CodeBlock({ code, language, className }: CodeBlockProps) {
+export function CodeBlock({ code, language, className, streaming = false }: CodeBlockProps) {
   const [html, setHtml] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const displayLang = normalizeLang(language)
@@ -23,13 +24,19 @@ export function CodeBlock({ code, language, className }: CodeBlockProps) {
 
   useEffect(() => {
     let cancelled = false
+    if (streaming) {
+      setHtml(null)
+      return () => {
+        cancelled = true
+      }
+    }
     highlightToHtml(code, language).then((out) => {
       if (!cancelled) setHtml(out)
     })
     return () => {
       cancelled = true
     }
-  }, [code, language])
+  }, [code, language, streaming])
 
   const copy = async () => {
     try {

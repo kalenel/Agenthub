@@ -43,6 +43,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@openai/codex-sdk": "0.136.0",
     "@radix-ui/react-tabs": "^1.1.14",
+    "@tanstack/react-virtual": "^3.14.3",
     "@uiw/codemirror-theme-github": "^4.25.10",
     "@uiw/react-codemirror": "^4.25.10",
     "better-sqlite3": "^12.10.0",

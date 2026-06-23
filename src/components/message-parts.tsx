@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { Check, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Image as ImageIcon, Layers, Loader2, Package, Presentation, Rocket, Sparkles, Terminal, XCircle } from 'lucide-react'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'

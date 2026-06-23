@@ -1,4 +1,4 @@
-/**
+﻿/**
  * DB 启动期自举：建表 + 自动 seed 内置 agent。
  *
  * 设计意图：
@@ -47,6 +47,7 @@ const DDL: string[] = [
     tool_names TEXT NOT NULL,
     is_builtin INTEGER NOT NULL DEFAULT 0,
     is_orchestrator INTEGER NOT NULL DEFAULT 0,
+    skill_names TEXT NOT NULL DEFAULT '[]',
     supports_vision INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   )`,
@@ -172,6 +173,7 @@ function ensureSchema(sqlite: Database.Database): void {
   for (const stmt of DDL) {
     sqlite.exec(stmt)
   }
+  safeAlter(sqlite, `ALTER TABLE agents ADD COLUMN skill_names TEXT NOT NULL DEFAULT '[]'`)
   safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN companion_mode TEXT NOT NULL DEFAULT 'off'`)
   safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN mobile_device_token TEXT`)
   safeAlter(sqlite, `ALTER TABLE app_settings ADD COLUMN deployment_publish_enabled INTEGER NOT NULL DEFAULT 0`)
@@ -199,11 +201,11 @@ function ensureBuiltinAgents(sqlite: Database.Database): void {
     INSERT INTO agents (
       id, name, avatar, description, capabilities, system_prompt,
       adapter_name, model_provider, model_id, api_key, api_base_url,
-      tool_names, is_builtin, is_orchestrator, supports_vision, created_at
+      skill_names, tool_names, is_builtin, is_orchestrator, supports_vision, created_at
     ) VALUES (
       @id, @name, @avatar, @description, @capabilities, @system_prompt,
       @adapter_name, @model_provider, @model_id, @api_key, @api_base_url,
-      @tool_names, @is_builtin, @is_orchestrator, @supports_vision, @created_at
+      '[]', @tool_names, @is_builtin, @is_orchestrator, @supports_vision, @created_at
     )
   `)
 

@@ -177,6 +177,7 @@ function buildCodexDeveloperInstructions(systemPrompt: string): string {
     'Use fs_list to inspect AgentHub workspace directories before reading specific files. Prefer it over shell-specific listing commands.',
     'When progress depends on the user choosing from a finite set of options, use ask_user to present structured choices instead of asking only in plain text. Do not use ask_user for open-ended discussion or non-blocking details.',
     'When you are executing an AgentHub dispatched sub-task, call report_task_result exactly once at the end to report whether the task is complete, failed, or blocked.',
+    'While the dispatched sub-task is still running, you may call report_task_progress to share a concise status update, optional percent, optional next step, and optional blockers. Do not use it to finish the task.',
     'deploy_artifact returns previewPath as a local relative path for the current AgentHub instance. Do not convert it into an absolute public URL and do not invent hostnames. In user-facing summaries, tell the user to use the deployment card buttons or quote previewPath exactly.',
   ].join('\n')
 }
@@ -192,6 +193,7 @@ function buildCodexMcpEnv(
     AGENTHUB_CONVERSATION_ID: input.conversationId,
     AGENTHUB_AGENT_ID: input.agentId,
     AGENTHUB_RUN_ID: input.runId,
+    ...(input.subAgentId ? { AGENTHUB_SUB_AGENT_ID: input.subAgentId } : {}),
   }
 }
 

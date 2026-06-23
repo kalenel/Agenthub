@@ -2,7 +2,22 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+vi.mock('@/db/client', () => ({
+  db: {
+    query: {
+      workspaces: {
+        findFirst: vi.fn(),
+      },
+    },
+  },
+  schema: {
+    workspaces: {
+      conversationId: 'conversation_id',
+    },
+  },
+}))
 
 import type { WorkspaceRow } from '@/db/schema'
 

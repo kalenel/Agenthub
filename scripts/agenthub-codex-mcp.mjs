@@ -181,6 +181,7 @@ async function callAgentHubTool(toolName, args) {
       conversationId,
       agentId,
       runId,
+      ...(process.env.AGENTHUB_SUB_AGENT_ID ? { subAgentId: process.env.AGENTHUB_SUB_AGENT_ID } : {}),
     }),
   })
 

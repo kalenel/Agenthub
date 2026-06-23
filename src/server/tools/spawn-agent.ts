@@ -1,19 +1,24 @@
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db, schema } from '@/db/client'
 import { agentRegistry } from '@/server/adapters/registry'
-import { toolRegistry } from '@/server/tools/registry'
+import type { AdapterInput } from '@/server/adapters/types'
 import { buildHistoryFor } from '@/server/conversation-context'
+import {
+  createSubAgent,
+  registerSubAgentRuntime,
+  removeSubAgent,
+} from '@/server/sub-agent-manager'
 import { getWorkspaceForConversation } from '@/server/fs-service'
 import { getEffectiveCwd } from '@/server/workspace-utils'
-import { createSubAgent, completeSubAgent, failSubAgent } from '@/server/sub-agent-manager'
 import type { ToolDef } from './types'
 
 const ArgsSchema = z.object({
   task: z.string().min(1),
   agent_name: z.string().optional(),
   tools: z.array(z.string()).optional(),
-});
+})
 
 export const spawnAgentTool: ToolDef = {
   name: 'spawn_agent',
@@ -34,6 +39,7 @@ export const spawnAgentTool: ToolDef = {
 
     const { task, agent_name } = parsed.data
     const toolNames = parsed.data.tools ?? ['fs_read', 'fs_write', 'bash', 'skill_load']
+    let spawnedSubAgentId: string | null = null
 
     try {
       const agent = await db.query.agents.findFirst({ where: eq(schema.agents.id, ctx.agentId) })
@@ -42,67 +48,84 @@ export const spawnAgentTool: ToolDef = {
       const workspace = await getWorkspaceForConversation(ctx.conversationId)
       if (!workspace) return { ok: false, error: 'Workspace not found' }
 
-      // Create sub-agent handle
       const handle = createSubAgent({
         name: agent_name || 'sub-agent',
         parentAgentId: ctx.agentId,
         parentConvId: ctx.conversationId,
+        parentSubAgentId: ctx.subAgentId,
+        parentRunId: ctx.runId,
         task,
         toolNames,
-      });
+      })
+      spawnedSubAgentId = handle.id
 
       const adapter = agentRegistry.getAdapter(agent)
-      const history = await buildHistoryFor(agent.id, ctx.conversationId, { maxTurns: 5 }).catch(() => [])
+      const turnHistory = await buildHistoryFor(agent.id, ctx.conversationId, { maxTurns: 5 }).catch(() => [])
 
-      const input = {
-        agentId: agent.id,
-        conversationId: ctx.conversationId,
-        runId: '',
-        prompt: task,
-        workspacePath: getEffectiveCwd(workspace),
-        systemPrompt: agent.systemPrompt + '\n\nYou are a sub-agent (ID: ' + handle.id + ') spawned for a single task. Complete the task and return the result. Do not ask questions.',
-        apiKey: agent.apiKey,
-        apiBaseUrl: agent.apiBaseUrl,
-        modelId: agent.modelId,
-        toolNames,
-        customConfig: agent.adapterName === 'custom' && agent.modelProvider && agent.modelId ? {
-          modelProvider: agent.modelProvider,
-          supportsVision: agent.supportsVision,
-        } : undefined,
-        history,
-      }
+      registerSubAgentRuntime(handle.id, {
+        running: false,
+        controller: null,
+        parentSignal: ctx.abortSignal,
+        async runTurn(nextPrompt: string, runId: string, signal: AbortSignal) {
+          const input: AdapterInput = {
+            agentId: agent.id,
+            conversationId: ctx.conversationId,
+            runId,
+            subAgentId: handle.id,
+            prompt: nextPrompt,
+            workspacePath: getEffectiveCwd(workspace),
+            systemPrompt:
+              agent.systemPrompt +
+              '\n\nYou are a sub-agent (ID: ' +
+              handle.id +
+              ') spawned for a single task. Complete the task and return the result. Do not ask questions.',
+            apiKey: agent.apiKey,
+            apiBaseUrl: agent.apiBaseUrl,
+            modelId: agent.modelId,
+            toolNames,
+            customConfig:
+              agent.adapterName === 'custom' && agent.modelProvider && agent.modelId
+                ? {
+                    modelProvider: agent.modelProvider,
+                    supportsVision: agent.supportsVision,
+                  }
+                : undefined,
+            history: turnHistory,
+          }
 
-      // Run asynchronously ? don't await, fire and forget with callback
-      const stream = adapter.stream(input, ctx.abortSignal)
-      const parts: Array<{ type: string; text?: string }> = []
+          const stream = adapter.stream(input, signal)
+          let outputText = ''
 
-      // Fire async collector
-      (async () => {
-        try {
-          for await (const event of stream) {
-            if (event.type === 'text' && 'text' in event) {
-              const last = parts[parts.length - 1]
-              if (last && last.type === 'text') {
-                last.text = (last.text ?? '') + event.text
-              } else {
-                parts.push({ type: 'text', text: event.text })
+          try {
+            for await (const event of stream) {
+              if (event.type === 'part.delta' && event.delta.type === 'text.append') {
+                outputText += event.delta.text
               }
             }
+            return outputText || '(No output)'
+          } finally {
+            if (signal.aborted && handle.status !== 'closed') {
+              handle.status = 'closed'
+            }
           }
-          const text = parts.filter(p => p.type === 'text').map(p => p.text).join('')
-          completeSubAgent(handle.id, text || '(No output)')
-          console.log('[SubAgent] ' + handle.id + ' completed')
-        } catch (err) {
-          failSubAgent(handle.id, err instanceof Error ? err.message : String(err))
-          console.warn('[SubAgent] ' + handle.id + ' failed:', err instanceof Error ? err.message : err)
-        }
-      })();
+        },
+      })
 
       return {
         ok: true,
-        value: '## Sub-agent spawned\n\n- **ID**: ' + handle.id + '\n- **Name**: ' + handle.name + '\n- **Status**: running\n- **Task**: ' + task.substring(0, 200) + '\n\nUse **wait_agent** to wait for the result, or **close_agent** to cancel.',
+        value:
+          '## Sub-agent spawned\n\n- **ID**: ' +
+          handle.id +
+          '\n- **Run**: ' +
+          handle.activeRunId +
+          '\n- **Name**: ' +
+          handle.name +
+          '\n- **Status**: running\n- **Task**: ' +
+          task.substring(0, 200) +
+          '\n\nUse **wait_agent** to wait for the result, **send_agent_input** to append more work, or **close_agent** to cancel.',
       }
     } catch (err) {
+      if (spawnedSubAgentId) removeSubAgent(spawnedSubAgentId)
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
   },

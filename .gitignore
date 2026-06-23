@@ -62,3 +62,12 @@ next-env.d.ts
 # IDE
 .vscode/
 .idea/
+
+# AgentHub dev logs
+.dev-err.txt
+.devlog.txt
+.dev-err-new.txt
+.dev-out-new.txt
+.launcher-logs/
+.session-status.txt
+.agents/

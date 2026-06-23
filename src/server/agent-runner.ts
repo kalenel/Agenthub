@@ -21,6 +21,7 @@ import { buildSkillRegistry, getSkillInjectionBlock, matchSkills } from '@/serve
 import { buildRulesInjection } from '@/server/rules-loader'
 import { buildCommandsRegistry } from '@/server/commands/command-loader'
 import { toolRegistry } from '@/server/tools/registry'
+import { YI_MEMORY_TOOL_NAMES } from './tools/yi-memory-tools'
 
 import { agentRegistry } from './adapters/registry'
 import type { AdapterAttachment, AdapterInput } from './adapters/types'
@@ -360,7 +361,7 @@ async function executeSimpleRun(
   // 为 custom 适配器自动注入忆记忆工具
   await toolRegistry.resolveAsync([])
   const mcpNames = toolRegistry.listNames().filter(n => n.startsWith('mcp__'))
-  const yiToolNames = ['yi_save_memory', 'yi_recall_memory', 'yi_semantic_search', 'yi_get_timeline', 'yi_save_task', 'yi_get_tasks', 'yi_update_task', 'yi_get_identity', 'yi_get_recent', 'yi_get_all', 'yi_get_stats', 'yi_local_status', 'yi_get_checkpoint', 'yi_update_checkpoint', 'yi_save_state', 'yi_get_state', 'yi_scan_backups', 'yi_scan_text', 'yi_save_environment', 'yi_get_environment']
+  const yiToolNames = [...YI_MEMORY_TOOL_NAMES]
   const baseToolNames = (args.overrideToolNames ?? agent.toolNames)
     .concat(mcpNames)
     .concat(agent.adapterName === 'custom' ? yiToolNames : [])
@@ -559,7 +560,7 @@ async function executeOrchestratorRun(
     workspace,
   )
   // Aggregate 阶段不再带 plan_tasks / ask_user，避免重复拆解或在最终总结前再次打断用户。
-  const aggregateToolNames = agent.toolNames.concat(["yi_save_memory","yi_recall_memory","yi_semantic_search","yi_get_timeline","yi_save_task","yi_get_tasks","yi_update_task","yi_get_identity","yi_get_recent","yi_get_all","yi_get_stats","yi_local_status","yi_get_checkpoint","yi_update_checkpoint","yi_save_state","yi_get_state","yi_scan_backups","yi_scan_text","yi_save_environment","yi_get_environment"]).filter(
+  const aggregateToolNames = agent.toolNames.concat([...YI_MEMORY_TOOL_NAMES]).filter(
     (n) => n !== 'plan_tasks' && n !== ASK_USER_TOOL_NAME,
   )
 
@@ -612,7 +613,7 @@ async function runPlanStage(
       'plan_tasks',
     ),
     ASK_USER_TOOL_NAME,
-  ).concat(["yi_save_memory","yi_recall_memory","yi_semantic_search","yi_get_timeline","yi_save_task","yi_get_tasks","yi_update_task","yi_get_identity","yi_get_recent","yi_get_all","yi_get_stats","yi_local_status","yi_get_checkpoint","yi_update_checkpoint","yi_save_state","yi_get_state","yi_scan_backups","yi_scan_text","yi_save_environment","yi_get_environment"])
+  ).concat([...YI_MEMORY_TOOL_NAMES])
   // 补救轮：把上一轮结果摘要拼到 prompt 前，原始请求仍保留供 Orchestrator 参考
   const effectivePrompt = replanContext
     ? `${replanContext}\n\n<original_request>\n${userPrompt}\n</original_request>`
@@ -1225,6 +1226,7 @@ function buildContinuationPrompt(
     continuationContext,
     '</continuation>',
   ].join('\n')
+}
 
 
   /**
@@ -1318,7 +1320,6 @@ function buildContinuationPrompt(
       })
     }
   }
-}
 
 function buildTaskContinuationContext(
   task: DispatchPlanItem,
@@ -1775,7 +1776,7 @@ async function finalize(
 
   // Agent-to-agent group chat: detect @mentions in agent response
   if (status === 'complete' && result.outputMessageIds.length > 0) {
-    triggerMentionedAgents(args, result.outputMessageIds).catch(err => {
+    triggerMentionedAgents(args, result.outputMessageIds).catch((err: unknown) => {
       console.error('[AgentRunner] triggerMentionedAgents failed', err)
     })
   }
@@ -1938,7 +1939,7 @@ function publish(event: StreamEvent): void {
 }
 
 // ─── Adapter 输入构造 ─────────────────────────────────────
-async function buildAdapterInput(
+export async function buildAdapterInput(
   args: RunArgs,
   agent: AgentRow,
   runId: string,

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 
+import { installYiMemoryBridge } from '@/server/yi-memory/bridge'
 import type { StreamEvent } from '@/shared/types'
 
 /**
@@ -35,6 +36,7 @@ const globalForBus = globalThis as unknown as {
 
 export const eventBus = globalForBus.__agenthubEventBus ?? new EventBus()
 
+installYiMemoryBridge(eventBus)
 if (!globalForBus.__agenthubEventBus) {
   globalForBus.__agenthubEventBus = eventBus
 }

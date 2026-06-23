@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { ChevronDown, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -13,7 +13,6 @@ import { fetchModels } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
 interface ModelSwitcherProps {
-  agentId: string
   provider: string
   currentModel: string
   apiKey?: string
@@ -23,7 +22,6 @@ interface ModelSwitcherProps {
 }
 
 export function ModelSwitcher({
-  agentId,
   provider,
   currentModel,
   apiKey,
@@ -42,21 +40,26 @@ export function ModelSwitcher({
       .then(setModels)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false))
-  }, [provider, apiBaseUrl])
+  }, [provider, apiBaseUrl, apiKey])
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className={cn(
-        'inline-flex items-center gap-1 h-7 px-2 text-xs font-mono text-muted-foreground hover:bg-accent rounded-md',
-        className
-      )}>
-        {currentModel || 'Select model'}
-        <ChevronDown className="h-3 w-3" />
+      <DropdownMenuTrigger
+        className={cn(
+          'inline-flex min-w-0 max-w-[10rem] items-center gap-1 rounded-md border px-2 py-1 text-xs font-mono text-muted-foreground transition hover:bg-accent hover:text-foreground',
+          className,
+        )}
+        title={currentModel || 'Select model'}
+      >
+        <span className="truncate">
+          {currentModel || 'Select model'}
+        </span>
+        <ChevronDown className="size-3 shrink-0" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="max-h-60 overflow-auto">
         {loading && (
           <div className="flex items-center gap-2 px-2 py-4 text-xs text-muted-foreground">
-            <RefreshCw className="h-3 w-3 animate-spin" />
+            <RefreshCw className="size-3 animate-spin" />
             Loading models...
           </div>
         )}

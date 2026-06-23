@@ -27,7 +27,7 @@ if (typeof electronPath !== 'string') {
   process.exit(1)
 }
 
-const child = spawn(electronPath, [scriptPath, ...args], {
+const child = spawn(electronPath.trim(), [scriptPath, ...args], {
   stdio: 'inherit',
   env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
 })

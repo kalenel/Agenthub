@@ -6,6 +6,13 @@ const AGENTHUB_TOOL_LABELS = {
   read_attachment: '读取附件',
   plan_tasks: '拆分任务',
   report_task_result: '上报结果',
+  report_task_progress: '进度汇报',
+  spawn_agent: '生成子代理',
+  close_agent: '关闭子代理',
+  resume_agent: '恢复子代理',
+  send_agent_input: '发送输入',
+  wait_agent: '等待子代理',
+  list_agents: '列出子代理',
   fs_read: '读取文件',
   fs_write: '写入文件',
   bash: '执行命令',
@@ -26,9 +33,7 @@ const EXTERNAL_TOOL_LABELS: Record<string, string> = {
   websearch: '搜索网页',
 }
 
-const AGENTHUB_TOOL_NAMES = Object.keys(AGENTHUB_TOOL_LABELS).sort(
-  (a, b) => b.length - a.length,
-)
+const AGENTHUB_TOOL_NAMES = Object.keys(AGENTHUB_TOOL_LABELS).sort((a, b) => b.length - a.length)
 
 export function getToolDisplayName(toolName: string): string {
   const normalized = toolName.trim()
@@ -50,11 +55,7 @@ function findAgentHubToolName(toolName: string): keyof typeof AGENTHUB_TOOL_LABE
   }
 
   for (const name of AGENTHUB_TOOL_NAMES) {
-    if (
-      toolName.endsWith(`__${name}`) ||
-      toolName.endsWith(`_${name}`) ||
-      toolName.endsWith(`.${name}`)
-    ) {
+    if (toolName.endsWith(`__${name}`) || toolName.endsWith(`_${name}`) || toolName.endsWith(`.${name}`)) {
       return name as keyof typeof AGENTHUB_TOOL_LABELS
     }
   }

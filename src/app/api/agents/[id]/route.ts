@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 
 import { deleteCustomAgent, updateCustomAgent } from '@/server/agent-service'
@@ -23,6 +23,7 @@ const PatchBody = z
     // null 表示清除，空字符串当 null 处理
     apiKey: z.union([z.string(), z.null()]).optional(),
     apiBaseUrl: z.union([z.string(), z.null()]).optional(),
+    skillNames: z.array(z.string()).optional(),
   })
   .strict()
 

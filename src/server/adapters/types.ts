@@ -3,7 +3,7 @@ import type { ChatCompletionMessageParam } from 'openai/resources/chat/completio
 import type { AdapterName, ModelProvider, StreamEvent } from '@/shared/types'
 
 /**
- * AgentPlatformAdapter — 屏蔽不同 Agent 平台（Claude Code / Codex / Custom / Mock）
+ * AgentPlatformAdapter —— 屏蔽不同 Agent 平台（Claude Code / Codex / Custom / Mock）
  * 的 API 差异，对上层提供统一的事件流。
  *
  * 详细规格见 specs/05-adapter-interface.md。
@@ -18,6 +18,8 @@ export interface AdapterInput {
   agentId: string
   conversationId: string
   runId: string
+  subAgentId?: string
+  taskId?: string
 
   /** 已被外层拼好的完整 prompt（群聊场景用 XML 包装） */
   prompt: string

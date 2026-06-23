@@ -1,6 +1,6 @@
-'use client'
+﻿'use client'
 
-import { AlertTriangle, FilePenLine, FolderOpen, FolderTree, Layers, Menu, MessagesSquare, UserPlus, X } from 'lucide-react'
+import { AlertTriangle, ChevronDown, FilePenLine, FolderOpen, FolderTree, Layers, Menu, MessagesSquare, Shield, UserPlus, Zap, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { AddAgentDialog } from '@/components/add-agent-dialog'
@@ -10,26 +10,32 @@ import { ArtifactLibrary } from '@/components/artifact-library'
 import { ConversationOutline } from '@/components/conversation-outline'
 import { FileLibraryDialog } from '@/components/file-library-dialog'
 import { FileTab } from '@/components/file-tab'
-import { PendingWriteDiffTab } from '@/components/pending-write-diff-tab'
+import { ModelSwitcher } from '@/components/model-switcher'
 import { PendingBashCommandsPanel } from '@/components/pending-bash-commands-panel'
+import { PendingWriteDiffTab } from '@/components/pending-write-diff-tab'
 import { PendingWritesPanel } from '@/components/pending-writes-panel'
 import { diffTabPendingId, isDiffTabId } from '@/components/pending-writes-panel'
 import { PinnedMessagesBar } from '@/components/pinned-messages-bar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageInput } from '@/components/message-input'
 import { MessageList } from '@/components/message-list'
 import { UsageBadge } from '@/components/usage-badge'
 import type { AgentRow } from '@/db/schema'
-import { fetchPendingDispatchPlans } from '@/lib/api'
+import {
+  approvePendingBashCommand,
+  approvePendingDispatchPlan,
+  approvePendingWrite,
+  fetchPendingBashCommands,
+  fetchPendingDispatchPlans,
+  fetchPendingWrites,
+  removeAgentsFromConversation,
+  setFsWriteApprovalMode,
+  updateAgent,
+} from '@/lib/api'
 import { cn } from '@/lib/utils'
 import {
   useActiveConversation,
@@ -49,30 +55,75 @@ export function ChatPanel() {
   const closeFile = useAppStore((s) => s.closeFile)
   const setActiveTab = useAppStore((s) => s.setActiveTab)
   const setMobileSidebarOpen = useAppStore((s) => s.setMobileSidebarOpen)
-  const setPendingDispatchPlansForConversation = useAppStore(
-    (s) => s.setPendingDispatchPlansForConversation,
-  )
+  const setPendingDispatchPlansForConversation = useAppStore((s) => s.setPendingDispatchPlansForConversation)
+  const upsertConversation = useAppStore((s) => s.upsertConversation)
+
   const [addOpen, setAddOpen] = useState(false)
   const [agentMgmtOpen, setAgentMgmtOpen] = useState(false)
+  const [modelsOpen, setModelsOpen] = useState(false)
+  const [filesOpen, setFilesOpen] = useState(false)
+  const [artifactsOpen, setArtifactsOpen] = useState(false)
+  const [permissionBusy, setPermissionBusy] = useState(false)
+
   const handleRemoveAgent = async (agentId: string) => {
     if (!conv) return
     try {
       const updated = await removeAgentsFromConversation(conv.id, [agentId])
-      useAppStore.getState().upsertConversation(updated)
-    } catch (err) { console.warn(err) }
+      upsertConversation(updated)
+    } catch (err) {
+      console.warn('[对话Panel] remove agent failed', err)
+    }
   }
-  const [filesOpen, setFilesOpen] = useState(false)
-  const [artifactsOpen, setArtifactsOpen] = useState(false)
+
+  const handleModelChange = async (agentId: string, modelId: string) => {
+    try {
+      const updated = await updateAgent(agentId, { modelId })
+      useAppStore.getState().upsertAgent(updated)
+    } catch (err) {
+      console.warn('[对话Panel] update model failed', err)
+    }
+  }
+
+  const setPermissionMode = async (nextMode: 'auto' | 'review') => {
+    if (!conv || permissionBusy || approvalMode === nextMode) return
+    setPermissionBusy(true)
+    try {
+      const updated = await setFsWriteApprovalMode(conv.id, nextMode)
+      upsertConversation(updated)
+      if (nextMode === 'auto') {
+        await Promise.allSettled([
+          sweepPendingWrites(conv.id),
+          sweepPendingBashCommands(conv.id),
+          sweepPendingDispatchPlans(conv.id),
+        ])
+      }
+    } catch (err) {
+      console.warn('[对话Panel] set permission mode failed', err)
+    } finally {
+      setPermissionBusy(false)
+    }
+  }
+
+  const sweepPendingWrites = async (conversationId: string) => {
+    const pending = await fetchPendingWrites(conversationId)
+    await Promise.allSettled(pending.map((item) => approvePendingWrite(conversationId, item.id)))
+  }
+
+  const sweepPendingBashCommands = async (conversationId: string) => {
+    const pending = await fetchPendingBashCommands(conversationId)
+    await Promise.allSettled(pending.map((item) => approvePendingBashCommand(conversationId, item.id)))
+  }
+
+  const sweepPendingDispatchPlans = async (conversationId: string) => {
+    const pending = await fetchPendingDispatchPlans(conversationId)
+    await Promise.allSettled(pending.map((item) => approvePendingDispatchPlan(conversationId, item.id)))
+  }
 
   const openFiles = useOpenFiles(conv?.id ?? '')
   const activeTab = useActiveTab(conv?.id ?? '')
   const pendingWrites = usePendingWrites(conv?.id ?? null)
-  const pendingById = useMemo(
-    () => new Map(pendingWrites.map((p) => [p.id, p])),
-    [pendingWrites],
-  )
+  const pendingById = useMemo(() => new Map(pendingWrites.map((p) => [p.id, p])), [pendingWrites])
 
-  // Pending 被 resolve（其他客户端 / SSE 移除）后，关闭对应的 diff tab —— 即使该 tab 当前在后台
   useEffect(() => {
     if (!conv) return
     for (const tabId of openFiles) {
@@ -90,7 +141,7 @@ export function ChatPanel() {
         if (!cancelled) setPendingDispatchPlansForConversation(conv.id, list)
       })
       .catch((err) => {
-        console.warn('[ChatPanel] fetch pending dispatch plans failed', err)
+        console.warn('[对话Panel] fetch pending dispatch plans failed', err)
       })
     return () => {
       cancelled = true
@@ -105,9 +156,9 @@ export function ChatPanel() {
             <MessagesSquare className="size-7 text-muted-foreground" />
           </div>
           <div className="space-y-1.5">
-            <h2 className="text-lg font-semibold">开始你的多 Agent 协作</h2>
+            <h2 className="text-lg font-semibold">Start a multi-agent conversation</h2>
             <p className="text-sm leading-6 text-muted-foreground">
-              从左侧选择一个会话继续聊天，或点击「+ 新建对话」选择一个或多个 Agent 开始
+              Pick a conversation on the left, or create a new one to begin.
             </p>
           </div>
         </div>
@@ -116,54 +167,57 @@ export function ChatPanel() {
   }
 
   const participantAgents = conv.agentIds.map((id) => agents[id]).filter(Boolean)
+  const approvalMode = conv.fsWriteApprovalMode ?? 'review'
 
   return (
     <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
       <header className="flex shrink-0 items-center gap-3 overflow-hidden border-b px-3 py-2">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-          {/* 移动端汉堡按钮：打开 sidebar 抽屉 */}
           <Button
             size="icon-sm"
             variant="ghost"
             onClick={() => setMobileSidebarOpen(true)}
-            title="打开会话列表"
+            title="打开侧边栏"
             className="md:hidden"
           >
             <Menu className="size-4" />
           </Button>
-          <ParticipantStack agents={participantAgents} onRemove={conv.mode === "group" ? handleRemoveAgent : undefined} />
+          <ParticipantStack agents={participantAgents} onRemove={conv.mode === 'group' ? handleRemoveAgent : undefined} />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
               <span className="min-w-0 truncate text-sm font-medium">{conv.title}</span>
               {conv.workspaceMode === 'local' && conv.workspaceBoundPath && (
                 <span
-                  title={`本地工作目录：${conv.workspaceBoundPath}`}
+                  title={`Workspace: ${conv.workspaceBoundPath}`}
                   className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300"
                 >
                   <AlertTriangle className="size-2.5" />
-                  本地
+                  Local
                 </span>
               )}
             </div>
             <Popover open={agentMgmtOpen} onOpenChange={setAgentMgmtOpen}>
-              <PopoverTrigger asChild>
-                <span className="truncate text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-                  {conv.mode === 'single' ? '单聊' : '群聊'} · {participantAgents.length} 位 Agent
+              <PopoverTrigger className="truncate text-xs text-muted-foreground transition-colors hover:text-foreground" aria-label="查看会话成员">
+                <span>
+                  {conv.mode === 'single' ? '单聊' : '群聊'} / {participantAgents.length} agents
                 </span>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-56 p-2">
-                <div className="text-xs font-medium text-muted-foreground mb-2">群聊成员</div>
+                <div className="mb-2 text-xs font-medium text-muted-foreground">群聊成员</div>
                 {participantAgents.map((agent) => (
-                  <div key={agent.id} className="flex items-center justify-between py-1.5 px-1 rounded hover:bg-accent">
-                    <div className="flex items-center gap-2 min-w-0">
+                  <div key={agent.id} className="flex items-center justify-between rounded px-1 py-1.5 hover:bg-accent">
+                    <div className="flex min-w-0 items-center gap-2">
                       <AgentInfoPopover agent={agent} size="xs" />
-                      <span className="text-sm truncate">{agent.name}</span>
+                      <span className="truncate text-sm">{agent.name}</span>
                     </div>
                     {participantAgents.length > 1 && (
                       <button
                         type="button"
-                        onClick={() => { handleRemoveAgent(agent.id); setAgentMgmtOpen(false); }}
-                        className="shrink-0 rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+                        onClick={() => {
+                          void handleRemoveAgent(agent.id)
+                          setAgentMgmtOpen(false)
+                        }}
+                        className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                         title="移除"
                       >
                         <X className="size-3.5" />
@@ -175,8 +229,86 @@ export function ChatPanel() {
             </Popover>
           </div>
         </div>
-        <div className="flex min-w-0 max-w-[65%] shrink-0 items-center gap-1 overflow-x-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {/* 右侧面板切换（文件树 / 产物预览，互斥）。点同一个再关掉。 */}
+
+        <div className="flex min-w-0 max-w-[70%] shrink-0 items-center gap-1 overflow-x-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {participantAgents.length > 1 && (
+            <Popover open={modelsOpen} onOpenChange={setModelsOpen}>
+              <PopoverTrigger
+                className="inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-md border border-border bg-background px-2 text-sm transition hover:bg-muted hover:text-foreground"
+                aria-label="切换成员模型"
+              >
+                <Layers className="size-3.5" />
+                <span>模型</span>
+                <ChevronDown className="size-3.5" />
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-96 p-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-xs font-medium text-muted-foreground">成员模型</div>
+                  <span className="text-[10px] text-muted-foreground">逐个切换每个 Agent 的模型</span>
+                </div>
+                <ScrollArea className="max-h-80 pr-1">
+                  <div className="flex flex-col gap-2">
+                    {participantAgents.map((agent) => (
+                      <div key={agent.id} className="flex items-center justify-between gap-2 rounded-md border bg-card px-2 py-1.5">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-medium">{agent.name}</div>
+                          <div className="truncate text-[10px] text-muted-foreground">
+                            {agent.modelProvider ?? 'provider'} / {agent.modelId ?? 'unselected'}
+                          </div>
+                        </div>
+                        <ModelSwitcher
+                          provider={agent.modelProvider ?? ''}
+                          currentModel={agent.modelId ?? ''}
+                          apiKey={agent.apiKey ?? undefined}
+                          apiBaseUrl={agent.apiBaseUrl ?? undefined}
+                          onModelChange={(modelId) => void handleModelChange(agent.id, modelId)}
+                          className="shrink-0"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </PopoverContent>
+            </Popover>
+          )}
+
+          <div className="inline-flex items-center gap-2 rounded-md border bg-background px-2 py-1 shadow-sm" aria-label="当前会话写权限切换">
+            <div className="flex flex-col leading-tight">
+              <span className="text-[10px] text-muted-foreground">当前会话写权限</span>
+              <span className="text-[11px] font-medium text-foreground">{approvalMode === 'auto' ? '全开' : '审查'}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => void setPermissionMode('review')}
+              disabled={permissionBusy}
+              className={cn(
+                'inline-flex min-w-[88px] items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition',
+                approvalMode === 'review'
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+              title="当前会话恢复到人工审批"
+            >
+              <Shield className="size-3.5" />
+              审查
+            </button>
+            <button
+              type="button"
+              onClick={() => void setPermissionMode('auto')}
+              disabled={permissionBusy}
+              className={cn(
+                'inline-flex min-w-[88px] items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition',
+                approvalMode === 'auto'
+                  ? 'bg-emerald-600 text-white shadow-sm dark:bg-emerald-500'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+              title="当前会话写权限全开"
+            >
+              <Zap className="size-3.5" />
+              全开
+            </button>
+          </div>
+
           <Button
             size="icon-sm"
             variant={fileExplorerOpen ? 'default' : 'ghost'}
@@ -189,7 +321,7 @@ export function ChatPanel() {
             size="icon-sm"
             variant={artifactsOpen || previewArtifactId ? 'default' : 'ghost'}
             onClick={() => setArtifactsOpen(true)}
-            title="本会话产物库"
+            title="会话产物库"
           >
             <Layers className="size-4" />
           </Button>
@@ -202,32 +334,20 @@ export function ChatPanel() {
             <FolderOpen className="size-4" />
           </Button>
           <ConversationOutline conversationId={conv.id} />
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            onClick={() => setAddOpen(true)}
-            title="添加 Agent"
-          >
+          <Button size="icon-sm" variant="ghost" onClick={() => setAddOpen(true)} title="添加 Agent">
             <UserPlus className="size-4" />
           </Button>
           <UsageBadge conversationId={conv.id} />
           <Badge variant={streamConnected ? 'default' : 'outline'} className="gap-1 px-1.5 text-[11px]">
-            <span
-              className={`size-1.5 rounded-full ${streamConnected ? 'bg-green-500' : 'bg-zinc-400'}`}
-            />
+            <span className={cn('size-1.5 rounded-full', streamConnected ? 'bg-green-500' : 'bg-zinc-400')} />
             {streamConnected ? '已连接' : '断开'}
           </Badge>
         </div>
       </header>
 
-      {/* Tab bar：仅在有打开的文件 / diff 时显示（避免单 chat tab 时浪费空间） */}
       {openFiles.length > 0 && (
         <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b bg-card/50 px-2 py-1 text-xs">
-          <TabButton
-            label="对话"
-            active={activeTab === 'chat'}
-            onClick={() => setActiveTab(conv.id, 'chat')}
-          />
+          <TabButton label="对话" active={activeTab === 'chat'} onClick={() => setActiveTab(conv.id, 'chat')} />
           {openFiles.map((tabId) => {
             if (isDiffTabId(tabId)) {
               const pw = pendingById.get(diffTabPendingId(tabId))
@@ -259,7 +379,6 @@ export function ChatPanel() {
         </div>
       )}
 
-      {/* 主体：chat / file tab / pending diff tab */}
       {activeTab === 'chat' || !openFiles.includes(activeTab) ? (
         <>
           <PinnedMessagesBar conversationId={conv.id} />
@@ -274,18 +393,8 @@ export function ChatPanel() {
         <FileTab conversationId={conv.id} relPath={activeTab} />
       )}
 
-      <AddAgentDialog
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        conversationId={conv.id}
-        existingAgentIds={conv.agentIds}
-      />
-
-      <FileLibraryDialog
-        open={filesOpen}
-        onOpenChange={setFilesOpen}
-        conversationId={conv.id}
-      />
+      <AddAgentDialog open={addOpen} onOpenChange={setAddOpen} conversationId={conv.id} existingAgentIds={conv.agentIds} />
+      <FileLibraryDialog open={filesOpen} onOpenChange={setFilesOpen} conversationId={conv.id} />
 
       <Dialog open={artifactsOpen} onOpenChange={setArtifactsOpen}>
         <DialogContent className="grid max-h-[min(680px,calc(100vh-2rem))] max-w-md grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-0">
@@ -316,19 +425,18 @@ function ParticipantStack({ agents, onRemove }: { agents: AgentRow[]; onRemove?:
     <div className="flex shrink-0 -space-x-2 overflow-hidden pr-1" title={title}>
       {visibleAgents.map((agent) => (
         <div key={agent.id} className="group/agent relative shrink-0">
-          <AgentInfoPopover
-            agent={agent}
-            size="sm"
-            avatarClassName="border-2 border-background"
-          />
+          <AgentInfoPopover agent={agent} size="sm" avatarClassName="border-2 border-background" />
           {onRemove && (
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); onRemove(agent.id); }}
+              onClick={(e) => {
+                e.stopPropagation()
+                onRemove(agent.id)
+              }}
               className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] text-destructive-foreground opacity-0 transition-opacity group-hover/agent:opacity-100"
-              title={"Remove " + agent.name}
+              title={`Remove ${agent.name}`}
             >
-              {"\u00d7"}
+              ×
             </button>
           )}
         </div>

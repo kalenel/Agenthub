@@ -1,12 +1,14 @@
 'use client'
 
-import { Archive, ArchiveRestore, BarChart3, Bot, ChevronDown, ChevronRight, Layers, MessageSquare, PanelLeftClose, PanelLeftOpen, Pencil, Pin, PinOff, Plus, Search, Trash2, X } from 'lucide-react'
+import { Archive, ArchiveRestore, BarChart3, Bot, ChevronDown, ChevronRight, Layers, MessageSquare, PanelLeftClose, PanelLeftOpen, Pencil, Pin, PinOff, Plus, Search, Trash2, Users, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { AgentLibrary } from '@/components/agent-library'
 import { AgentAvatar } from '@/components/agent-avatar'
 import { GlobalSearchTrigger } from '@/components/global-search-trigger'
 import { ArtifactLibrary } from '@/components/artifact-library'
+import { SubAgentPanel } from '@/components/sub-agent-panel'
+import { MemoryButton } from '@/components/memory-drawer'
 import { NewConversationDialog } from '@/components/new-conversation-dialog'
 import { SettingsButton } from '@/components/settings-dialog'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -35,7 +37,7 @@ import { cn } from '@/lib/utils'
 import type { AgentRow, ConversationRow } from '@/db/schema'
 import { useAppStore, useConversationList, useUnreadCount } from '@/stores/app-store'
 
-type Mode = 'conversations' | 'artifacts' | 'agents' | 'analytics'
+type Mode = 'conversations' | 'artifacts' | 'agents' | 'subagents' | 'analytics'
 
 export function Sidebar() {
   const mobileOpen = useAppStore((s) => s.mobileSidebarOpen)
@@ -167,7 +169,8 @@ export function Sidebar() {
           </div>
         )}
         <div className={cn('flex items-center', collapsed ? 'flex-col gap-1' : 'gap-0.5')}>
-          <SettingsButton />
+         <SettingsButton />
+          <MemoryButton />
           <ThemeToggle />
           <Button
             size="icon"
@@ -222,6 +225,14 @@ export function Sidebar() {
           onClick={() => setMode('agents')}
           icon={<Bot className="size-4" />}
           label="Agents"
+        />
+        <TabButton
+          mode={mode}
+          self="subagents"
+          collapsed={collapsed}
+          onClick={() => setMode('subagents')}
+          icon={<Users className="size-4" />}
+          label="Sub-agents"
         />
         <TabButton
           mode={mode}
@@ -306,7 +317,13 @@ export function Sidebar() {
                           conv={c}
                           firstAgent={firstAgent}
                           isActive={isActive}
-                          onActivate={() => setActive(c.id)}
+                          onActivate={() => setActive(c.id, {
+                          source: 'sidebar',
+                          reason: 'select conversation',
+                          fromConversationId: activeId,
+                          trigger: c.id,
+                          recipient: 'window',
+                        })}
                         />
                       )
                     }
@@ -318,7 +335,13 @@ export function Sidebar() {
                         firstAgent={firstAgent}
                         isActive={isActive}
                         isRenaming={renamingId === c.id}
-                        onActivate={() => setActive(c.id)}
+                        onActivate={() => setActive(c.id, {
+                          source: 'sidebar',
+                          reason: 'select conversation',
+                          fromConversationId: activeId,
+                          trigger: c.id,
+                          recipient: 'window',
+                        })}
                         onTogglePin={() => void handleTogglePin(c.id)}
                         onToggleArchive={() => void handleToggleArchive(c.id)}
                         onStartRename={() => setRenamingId(c.id)}
@@ -358,7 +381,13 @@ export function Sidebar() {
                           isActive={activeId === c.id}
                           isRenaming={renamingId === c.id}
                           isArchived
-                          onActivate={() => setActive(c.id)}
+                          onActivate={() => setActive(c.id, {
+                          source: 'sidebar',
+                          reason: 'select conversation',
+                          fromConversationId: activeId,
+                          trigger: c.id,
+                          recipient: 'window',
+                        })}
                           onTogglePin={() => void handleTogglePin(c.id)}
                           onToggleArchive={() => void handleToggleArchive(c.id)}
                           onStartRename={() => setRenamingId(c.id)}
@@ -377,6 +406,8 @@ export function Sidebar() {
         !collapsed && <ArtifactLibrary />
       ) : mode === 'agents' ? (
         !collapsed && <AgentLibrary />
+      ) : mode === 'subagents' ? (
+        !collapsed && activeId && <SubAgentPanel conversationId={activeId} />
       ) : (
         !collapsed && <UsageDashboard />
       )}

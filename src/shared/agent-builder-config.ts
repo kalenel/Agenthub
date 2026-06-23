@@ -10,7 +10,7 @@ export const AGENT_BUILDER_PROVIDER_DEFAULTS: Record<
   deepseek: { label: 'DeepSeek', defaultModel: 'deepseek-v4-flash' },
   anthropic: { label: 'Anthropic', defaultModel: 'claude-opus-4-7' },
   openai: { label: 'OpenAI', defaultModel: 'gpt-4o' },
-  'volcano-ark': { label: '火山方舟 (豆包)', defaultModel: 'doubao-seed-2-0-lite-260428' },
+  'volcano-ark': { label: '铁山船 (豆包)', defaultModel: 'doubao-seed-2-0-lite-260428' },
   'openai-compatible': { label: 'OpenAI-compatible', defaultModel: '' },
 }
 
@@ -28,6 +28,15 @@ export const AVAILABLE_AGENT_TOOLS = [
   'fs_read',
   'fs_write',
   'bash',
+  'skill_load',
+  'spawn_agent',
+  'close_agent',
+  'resume_agent',
+  'send_agent_input',
+  'wait_agent',
+  'list_agents',
+  'add_agent',
+  'remove_agent',
 ] as const
 
 export type AgentToolName = (typeof AVAILABLE_AGENT_TOOLS)[number]
@@ -50,7 +59,7 @@ export const AGENT_TOOL_PRESETS: readonly AgentToolPreset[] = [
   {
     id: 'local-code',
     label: '本地代码',
-    desc: '读写 workspace 并运行命令',
+    desc: '读写 workspace 并执行命令',
     tools: ['deploy_workspace', 'read_artifact', 'read_attachment', 'ask_user', 'fs_list', 'fs_read', 'fs_write', 'bash'],
   },
   {
@@ -74,12 +83,21 @@ export const AGENT_TOOL_META: Record<AgentToolName, { label: string; desc: strin
   deploy_artifact: { label: '部署网页', desc: '把网页产物发布为本地静态站点，生成预览链接与下载包' },
   deploy_workspace: { label: '部署目录', desc: '把工作区内 dist/build/out 等静态目录生成预览链接与下载包' },
   read_artifact: { label: '读取产物', desc: '查看会话中已有产物的完整内容，便于在其基础上继续改' },
-  read_attachment: { label: '读取附件', desc: '读取用户上传的文本 / 文件附件内容' },
+  read_attachment: { label: '读取附件', desc: '读取用户上传的文本/文件附件内容' },
   ask_user: { label: '结构化提问', desc: '让用户在明确选项中选择，用于范围、风格、平台等关键澄清' },
   fs_list: { label: '列出文件', desc: '列出工作区内的目录和文件，用于安全探索项目结构' },
   fs_read: { label: '读取文件', desc: '读取工作区内的文件（源码 / 配置等），仅限沙箱目录' },
-  fs_write: { label: '写入文件', desc: '在工作区内新建 / 修改文件；review 模式下需用户批准' },
+  fs_write: { label: '写入文件', desc: '在工作区内新建/修改文件，review 模式下需用户批准' },
   bash: { label: '执行命令', desc: '在工作区内运行命令行；受命令黑名单与沙箱目录约束' },
+  skill_load: { label: '加载技能', desc: '按需加载本地技能，强化专业工作流' },
+  spawn_agent: { label: '生成子代理', desc: '创建一个新的子 agent 并异步执行任务' },
+  close_agent: { label: '关闭子代理', desc: '关闭一个子 agent 及其后代' },
+  resume_agent: { label: '恢复子代理', desc: '给既有子 agent 分配新任务并继续执行' },
+  send_agent_input: { label: '发送输入', desc: '向运行中的子 agent 追加说明或补充信息' },
+  wait_agent: { label: '等待子代理', desc: '等待一个或多个子 agent 完成' },
+  list_agents: { label: '列出子代理', desc: '查看当前会话中的所有子 agent 状态' },
+  add_agent: { label: '添加成员', desc: '把现有 agent 加入当前群聊会话' },
+  remove_agent: { label: '移除成员', desc: '把不再相关的 agent 从当前群聊会话移除' },
 }
 
 export interface AgentDraftAssumption {
@@ -148,9 +166,9 @@ export function buildToolPermissionSummaries(
 export function inferAgentToolPreset(intent: string, followUp?: string): AgentToolPresetId {
   const text = `${intent}\n${followUp ?? ''}`.toLowerCase()
   const wantsToWrite =
-    /写|实现|开发|生成|创建|搭建|部署|build|implement|create|write|ship/.test(text) ||
+    /创建|实现|开发|生成|构建|搭建|部署|build|implement|create|write|ship/.test(text) ||
     /修改(?!建议)/.test(text)
-  const wantsReview = /审查|评审|检查|验证|验收|风险|review|audit|inspect|validate|verify/.test(text)
+  const wantsReview = /审查|审阅|检查|验证|验收|风险|review|audit|inspect|validate|verify/.test(text)
   if (wantsReview && !wantsToWrite) return 'review'
 
   if (
@@ -162,7 +180,7 @@ export function inferAgentToolPreset(intent: string, followUp?: string): AgentTo
   }
 
   if (
-    /产物|网页|页面|原型|文档|报告|幻灯片|演示|图示|图表|设计稿|ppt|slides|presentation|website|document|diagram|mermaid|prototype/.test(
+    /产物|网页|页面|原型|文档|报告|幻灯片|演示|图示|图表|设计|ppt|slides|presentation|website|document|diagram|mermaid|prototype/.test(
       text,
     )
   ) {

@@ -1,11 +1,11 @@
-import type { DispatchPlanItem, PendingDispatchPlan } from '@/shared/types'
-
-import { eventBus } from './event-bus'
+﻿import { eventBus } from './event-bus'
 import { newPendingDispatchPlanId } from './ids'
+
+import type { DispatchPlanItem, PendingDispatchPlan, StreamEvent } from '@/shared/types'
 
 type PlanValidator = (plan: DispatchPlanItem[]) => DispatchPlanItem[]
 
-/** 用户对 pending 计划的决定，由 gate 的 resolver 回传给 Orchestrator run。 */
+/** 用户对 pending 计划的决定，交给 gate 的 resolver 回传给 Orchestrator run。*/
 export type PlanReviewOutcome =
   | { kind: 'approve'; plan: DispatchPlanItem[] }
   | { kind: 'reject' }
@@ -72,7 +72,7 @@ class PendingDispatchPlansStore {
       .sort((a, b) => a.createdAt - b.createdAt)
   }
 
-  /** 批准：用已登记的（只读）计划执行；仍过一遍 validator 做防御性校验。 */
+  /** 批准：用已登记的（只读）计划执行；仍过一遍 validator 做防御性校验。*/
   approve(id: string): PendingDispatchPlanResult {
     const entry = this.map.get(id)
     if (!entry) return { ok: false, error: 'Pending dispatch plan not found' }
@@ -92,7 +92,7 @@ class PendingDispatchPlansStore {
     return { ok: true }
   }
 
-  /** 修改：把用户的自然语言反馈交回 Orchestrator 重排；当前 pending 作废（重排后会再发新的）。 */
+  /** 修改：把用户的自然语言反馈交回 Orchestrator 重排；当前 pending 作废（重排后会再发新的）。*/
   revise(id: string, feedback: string): boolean {
     const entry = this.map.get(id)
     if (!entry) return false
@@ -120,7 +120,7 @@ class PendingDispatchPlansStore {
     const entry = this.map.get(id)
     if (!entry) return
     this.map.delete(id)
-    eventBus.publish({
+    const event: StreamEvent & { pendingPlan: PendingDispatchPlan } = {
       type: 'dispatch.plan.resolved',
       conversationId: entry.pendingPlan.conversationId,
       timestamp: Date.now(),
@@ -128,7 +128,9 @@ class PendingDispatchPlansStore {
       runId: entry.pendingPlan.runId,
       approved: opts.approved,
       ...(opts.revising ? { revising: true } : {}),
-    })
+      pendingPlan: entry.pendingPlan,
+    }
+    eventBus.publish(event)
   }
 }
 

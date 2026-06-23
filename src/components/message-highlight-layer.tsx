@@ -16,16 +16,23 @@ import { useAppStore } from '@/stores/app-store'
 export function MessageHighlightLayer() {
   const highlightedId = useSearchStore((s) => s.highlightedMessageId)
   const setActive = useAppStore((s) => s.setActiveConversation)
+  const activeConversationId = useAppStore((s) => s.activeConversationId)
   const pendingConv = useSearchStore((s) => s.pendingJumpConversationId)
   const consume = useSearchStore((s) => s.consumePendingJump)
 
   // Step 1: switch to the conversation if needed
   useEffect(() => {
     if (pendingConv) {
-      setActive(pendingConv)
+      setActive(pendingConv, {
+        source: 'search',
+        reason: 'jump to search result',
+        trigger: highlightedId ?? pendingConv,
+        fromConversationId: activeConversationId,
+        recipient: 'window',
+      })
       consume()
     }
-  }, [pendingConv, setActive, consume])
+  }, [pendingConv, setActive, consume, highlightedId, activeConversationId])
 
   // Step 2: scroll + flash when a message id is set
   useEffect(() => {

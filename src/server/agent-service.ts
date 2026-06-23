@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm'
+﻿import { and, desc, eq } from 'drizzle-orm'
 
 import { db, schema } from '@/db/client'
 import { newAgentId } from '@/server/ids'
@@ -33,6 +33,7 @@ export interface CreateAgentArgs {
   apiKey?: string | null
   /** 自定义 API base URL。Claude/Codex 对 endpoint 协议兼容性要求不同；NULL 走默认 */
   apiBaseUrl?: string | null
+  skillNames?: string[]
 }
 
 export async function createCustomAgent(args: CreateAgentArgs) {
@@ -67,6 +68,7 @@ export async function createCustomAgent(args: CreateAgentArgs) {
     isBuiltin: false,
     isOrchestrator: false,
     supportsVision: args.supportsVision ?? false,
+    skillNames: args.skillNames ?? [],
     createdAt,
   }
 
@@ -106,6 +108,7 @@ export interface UpdateAgentPatch {
   apiKey?: string | null
   /** 传 null 显式清除自定义 base URL；undefined 表示不动 */
   apiBaseUrl?: string | null
+  skillNames?: string[]
 }
 
 export async function updateCustomAgent(agentId: string, patch: UpdateAgentPatch) {

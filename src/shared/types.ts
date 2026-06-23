@@ -1,6 +1,6 @@
 /**
- * 共享类型 — 前后端都引用此文件。
- * 与 specs/01-core-entities.md, specs/02-stream-events.md, specs/03-message-parts.md 对应。
+ * 共享类型 �?前后端都引用此文件�?
+ * �?specs/01-core-entities.md, specs/02-stream-events.md, specs/03-message-parts.md 对应�?
  */
 
 // ─── MessagePart 联合类型 ─────────────────────────────────
@@ -120,6 +120,27 @@ export interface PptColumn {
   blocks?: PptColumnBlock[]
 }
 
+export type SubAgentStatus = 'running' | 'completed' | 'closed' | 'error'
+
+export interface SubAgentHandle {
+  id: string
+  name: string
+  status: SubAgentStatus
+  result?: string
+  error?: string
+  createdAt: number
+  updatedAt?: number
+  parentAgentId: string
+  parentConvId: string
+  parentRunId?: string
+  parentSubAgentId?: string
+  lastTask?: string
+  lastPrompt?: string
+  queuedInputs?: string[]
+  activeRunId?: string
+  toolNames?: string[]
+}
+
 export type PptColumnBlock =
   | { type: 'paragraph'; text: string }
   | { type: 'bullets'; items: string[]; ordered?: boolean }
@@ -135,19 +156,19 @@ export interface PptSlide {
   layout?: PptLayout
 }
 
-/** 幻灯片视觉 token；颜色为不带 # 的 hex（如 '1A3C6E'）。全部可选，渲染时经 resolvePptTheme 填默认值。 */
+/** 幻灯片视�?token；颜色为不带 # �?hex（如 '1A3C6E'）。全部可选，渲染时经 resolvePptTheme 填默认值�?*/
 export interface PptTheme {
-  primary?: string // 主色：标题、强调、顶部色条
-  background?: string // 幻灯片背景（建议冷白，非纯白）
+  primary?: string // 主色：标题、强调、顶部色�?
+  background?: string // 幻灯片背景（建议冷白，非纯白�?
   surface?: string // 卡片 / 容器背景
   textBody?: string // 正文 / 要点
-  textMuted?: string // 副标题 / 页码 / 脚注
-  accentPositive?: string // 正面指标（增长 / 利润）
+  textMuted?: string // 副标�?/ 页码 / 脚注
+  accentPositive?: string // 正面指标（增�?/ 利润�?
   accentNegative?: string // 警示 / 风险
-  divider?: string // 分割线 / 边框
+  divider?: string // 分割�?/ 边框
   fontHeading?: string // 标题字体
   fontBody?: string // 正文字体
-  /** @deprecated 旧字段，resolvePptTheme 兼容映射到 primary / fontHeading+fontBody */
+  /** @deprecated 旧字段，resolvePptTheme 兼容映射�?primary / fontHeading+fontBody */
   primaryColor?: string
   fontFace?: string
 }
@@ -246,6 +267,13 @@ export interface TaskResultReport {
   blockers?: string[]
 }
 
+export interface TaskProgressReport {
+  summary: string
+  percent?: number
+  nextStep?: string
+  blockers?: string[]
+}
+
 export type DispatchTaskStatus =
   | 'pending'
   | 'running'
@@ -256,17 +284,17 @@ export type DispatchTaskStatus =
 
 export type DispatchTaskEndStatus = Exclude<DispatchTaskStatus, 'pending' | 'running'>
 
-// ─── Agent 写文件审批 ─────────────────────────────────────
+// ─── Agent 写文件审�?─────────────────────────────────────
 /**
- * Agent 调 fs_write 在 review 模式下产出的「待审批」记录。后端持有 promise，
- * 前端展示 diff 让用户决定 approve / reject。详见 specs/07-tools.md fs_write 一节。
+ * Agent �?fs_write �?review 模式下产出的「待审批」记录。后端持�?promise�?
+ * 前端展示 diff 让用户决�?approve / reject。详�?specs/07-tools.md fs_write 一节�?
  */
 export interface PendingWrite {
   id: string                  // pwr_<nanoid>
   conversationId: string
   agentId: string
   runId: string
-  /** 相对 workspace 的路径 */
+  /** 相对 workspace 的路�?*/
   path: string
   absolutePath: string
   /** null = 新建文件 */
@@ -276,10 +304,10 @@ export interface PendingWrite {
 }
 
 /**
- * Agent 调 ask_user 工具想结构化问用户问题；前端弹 dialog 让用户选项，
- * 选完后通过 attachResolver 唤醒 await，工具 handler 返回 answers。
- * Schema 对齐 Anthropic SDK 的 AskUserQuestion（1-4 questions × 2-4 options），
- * 让 CustomAgent / ClaudeCodeAdapter 共用同一 UI。
+ * Agent �?ask_user 工具想结构化问用户问题；前端�?dialog 让用户选项�?
+ * 选完后通过 attachResolver 唤醒 await，工�?handler 返回 answers�?
+ * Schema 对齐 Anthropic SDK �?AskUserQuestion�?-4 questions × 2-4 options），
+ * �?CustomAgent / ClaudeCodeAdapter 共用同一 UI�?
  */
 export interface AskUserOption {
   label: string
@@ -290,10 +318,10 @@ export interface AskUserOption {
 export interface AskUserQuestionItem {
   /** 完整问题文本 */
   question: string
-  /** 短标签（chip） */
+  /** 短标签（chip�?*/
   header: string
   options: AskUserOption[]
-  /** 默认 false。true 时允许多选；答案在 answers 里逗号分隔。 */
+  /** 默认 false。true 时允许多选；答案�?answers 里逗号分隔�?*/
   multiSelect?: boolean
 }
 export interface PendingQuestion {
@@ -354,7 +382,7 @@ export interface DeployCandidateRecord {
   createdByAgentId: string
   createdAt: number
 }
-/** 单条问题的答案：选中的 label 列表 + 可选自由文本（点「其他」时填）。 */
+/** 单条问题的答案：选中�?label 列表 + 可选自由文本（点「其他」时填）�?*/
 export interface AskUserAnswer {
   selectedLabels: string[]
   freeformNote?: string
@@ -394,8 +422,13 @@ export type StreamEvent = BaseEvent &
         childRunId?: string
         taskId: string
         status: DispatchTaskEndStatus
+        taskReport?: TaskResultReport
         error?: string
       }
+    | { type: 'dispatch.progress'; parentRunId: string; childRunId?: string; taskId: string; progress: TaskProgressReport }
+    | { type: 'sub_agent.created'; conversationId: string; timestamp: number; subAgent: SubAgentHandle }
+    | { type: 'sub_agent.updated'; conversationId: string; timestamp: number; subAgent: SubAgentHandle }
+    | { type: 'sub_agent.removed'; conversationId: string; timestamp: number; subAgentId: string }
     | { type: 'fs_write.pending'; pendingWrite: PendingWrite }
     | { type: 'fs_write.resolved'; pendingId: string; applied: boolean }
     | { type: 'bash_command.pending'; pendingCommand: PendingBashCommand }
@@ -405,7 +438,7 @@ export type StreamEvent = BaseEvent &
     | { type: 'heartbeat' }
   )
 
-/** RunUsage 事件 payload。与 db/schema.ts 的 RunUsage 同形，重复定义避开 client/server 边界 import。 */
+/** RunUsage 事件 payload。与 db/schema.ts �?RunUsage 同形，重复定义避开 client/server 边界 import�?*/
 export interface RunUsageEvent {
   inputTokens: number
   outputTokens: number
@@ -415,14 +448,14 @@ export interface RunUsageEvent {
   model?: string
 }
 
-/** Per-message usage 事件 payload。与 db/schema.ts 的 MessageUsage 同形。 */
+/** Per-message usage 事件 payload。与 db/schema.ts �?MessageUsage 同形�?*/
 export interface MessageUsageEvent {
   inputTokens: number
   outputTokens: number
   cacheReadTokens: number
 }
 
-// 简化版 Artifact，用于事件 payload（与 DB 行结构一致）
+// 简化版 Artifact，用于事�?payload（与 DB 行结构一致）
 export interface ArtifactRecord {
   id: string
   conversationId: string
@@ -435,8 +468,8 @@ export interface ArtifactRecord {
   createdAt: number
 }
 
-// 用于事件 payload 的完整消息（与 db/schema.ts 的 MessageRow 同形）。
-// types 不反向 import schema 以免循环依赖，故在此重复定义，类比上面的 ArtifactRecord。
+// 用于事件 payload 的完整消息（�?db/schema.ts �?MessageRow 同形）�?
+// types 不反�?import schema 以免循环依赖，故在此重复定义，类比上面的 ArtifactRecord�?
 export interface MessageRecord {
   id: string
   conversationId: string
@@ -464,3 +497,4 @@ export interface SearchHit {
   /** FTS5 path: contains <mark>...</mark> tags. LIKE path: plain text. */
   snippetHtml: string
 }
+

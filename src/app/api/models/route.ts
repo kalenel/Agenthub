@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAppSettings } from '@/server/settings-service'
 import OpenAI from 'openai'
+
+import type { AppSettingsRow } from '@/db/schema'
+import { getAppSettings } from '@/server/settings-service'
 
 /**
  * GET /api/models?provider=deepseek&baseUrl=https://...&apiKey=sk-xxx
- * 
- * 从 OpenAI-compatible 端点拉取可用模型列表。
- * 支持: deepseek, openai, volcano-ark, openai-compatible
  */
 export async function GET(req: NextRequest) {
   const provider = req.nextUrl.searchParams.get('provider')
@@ -14,15 +13,15 @@ export async function GET(req: NextRequest) {
   let apiKey = req.nextUrl.searchParams.get('apiKey')
 
   if (!apiKey) {
-    // Fall back to global settings key for this provider
     const settings = await getAppSettings()
-    apiKey = settings[getSettingsKey(provider)] ?? undefined
+    const settingsKey = getSettingsKey(provider)
+    const settingValue = settings[settingsKey]
+    apiKey = typeof settingValue === 'string' ? settingValue : null
     if (!apiKey) {
       return NextResponse.json({ error: 'Missing apiKey (neither per-agent nor global settings)' }, { status: 400 })
     }
   }
 
-  // 通过 Query 传 key 不安全，仅本地使用；生产应走 settings
   const effectiveBaseUrl = baseUrl || getDefaultBaseUrl(provider)
   if (!effectiveBaseUrl) {
     return NextResponse.json({ error: 'Missing baseUrl and no default for provider' }, { status: 400 })
@@ -38,7 +37,7 @@ export async function GET(req: NextRequest) {
 
     const response = await client.models.list()
     const models = response.data
-      .map((m) => m.id)
+      .map((model) => model.id)
       .filter((id) => !id.includes('embed') && !id.includes('moderation') && !id.includes('tts') && !id.includes('whisper'))
       .sort()
 
@@ -49,21 +48,32 @@ export async function GET(req: NextRequest) {
   }
 }
 
-function getSettingsKey(provider: string | null): keyof typeof import('@/db/schema').AppSettingsRow {
+type AppSettingsApiKeyKey = Extract<keyof AppSettingsRow, 'anthropicApiKey' | 'openaiApiKey' | 'deepseekApiKey' | 'arkApiKey'>
+
+function getSettingsKey(provider: string | null): AppSettingsApiKeyKey {
   switch (provider) {
-    case 'deepseek': return 'deepseekApiKey' as any
-    case 'openai': return 'openaiApiKey' as any
-    case 'anthropic': return 'anthropicApiKey' as any
-    case 'volcano-ark': return 'arkApiKey' as any
-    default: return 'openaiApiKey' as any
+    case 'deepseek':
+      return 'deepseekApiKey'
+    case 'openai':
+      return 'openaiApiKey'
+    case 'anthropic':
+      return 'anthropicApiKey'
+    case 'volcano-ark':
+      return 'arkApiKey'
+    default:
+      return 'openaiApiKey'
   }
 }
 
 function getDefaultBaseUrl(provider: string | null): string | null {
   switch (provider) {
-    case 'deepseek': return 'https://api.deepseek.com/v1'
-    case 'openai': return 'https://api.openai.com/v1'
-    case 'volcano-ark': return 'https://ark.cn-beijing.volces.com/api/v3'
-    default: return null
+    case 'deepseek':
+      return 'https://api.deepseek.com/v1'
+    case 'openai':
+      return 'https://api.openai.com/v1'
+    case 'volcano-ark':
+      return 'https://ark.cn-beijing.volces.com/api/v3'
+    default:
+      return null
   }
 }

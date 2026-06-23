@@ -19,6 +19,7 @@ export function UsageDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const setActiveConversation = useAppStore((s) => s.setActiveConversation)
+  const activeConversationId = useAppStore((s) => s.activeConversationId)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -125,7 +126,13 @@ export function UsageDashboard() {
               <button
                 key={c.id}
                 type="button"
-                onClick={() => setActiveConversation(c.id)}
+                onClick={() => setActiveConversation(c.id, {
+                  source: 'usage-dashboard',
+                  reason: 'open top conversation',
+                  fromConversationId: activeConversationId,
+                  trigger: c.id,
+                  recipient: 'window',
+                })}
                 className="flex w-full items-baseline justify-between gap-2 rounded px-1 py-0.5 text-left transition hover:bg-accent"
                 title={`点击跳转 · 更新时间 ${new Date(c.updatedAt).toLocaleString('zh-CN')}`}
               >

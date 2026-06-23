@@ -103,7 +103,7 @@ function getElectronBinary() {
   if (typeof electronPath !== 'string') {
     throw new Error('Unable to resolve Electron binary path')
   }
-  return electronPath
+  return electronPath.trim()
 }
 
 function findNodeGypScript() {

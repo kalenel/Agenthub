@@ -1030,5 +1030,5 @@ export async function removeAgentsFromConversation(a: RemoveAgentsArgs): Promise
   if (remaining.length === 0) throw new Error("Cannot remove all agents");
   const m = remaining.length >= 2 ? "group" : "single";
   await db.update(schema.conversations).set({ agentIds: remaining, mode: m, updatedAt: Date.now() }).where(eq(schema.conversations.id, a.conversationId));
-  return toConversationWithMeta({ ...conv, agentIds: remaining, mode: m } as typeof conv);
+  return withWorkspaceMeta({ ...conv, agentIds: remaining, mode: m } as typeof conv);
 }

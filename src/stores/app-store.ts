@@ -5,6 +5,7 @@ import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 
 import type { AgentRunRow, AgentRow, ArtifactRow, AttachmentRow, ConversationWithMeta, MessageRow } from '@/db/schema'
+import { recordConversationTransitionApi, type ConversationTransitionLogInput } from '@/lib/api'
 import type {
   DispatchPlanItem,
   DispatchTaskStatus,
@@ -14,6 +15,8 @@ import type {
   PendingQuestion,
   PendingWrite,
   StreamEvent,
+  TaskProgressReport,
+  TaskResultReport,
 } from '@/shared/types'
 
 enableMapSet()
@@ -26,6 +29,12 @@ export interface DispatchState {
   childRunIds: Record<string, string>              // taskId → childRunId
   reviewStatus?: 'pending' | 'approved' | 'rejected'
   pendingPlanId?: string
+  taskLastEventAt?: Record<string, number>
+  taskLastStatusText?: Record<string, string>
+  taskProgress?: Record<string, TaskProgressReport>
+  taskReports?: Record<string, TaskResultReport>
+  lastEventAt?: number
+  lastStatusText?: string
 }
 
 interface AppState {
@@ -106,7 +115,7 @@ interface AppState {
   setMessagesForConversation(conversationId: string, list: MessageRow[]): void
   /** 单条 message upsert（编辑后重发场景：服务端写完 user message，前端要自己塞进 store）。 */
   upsertMessage(message: MessageRow): void
-  setActiveConversation(id: string | null): void
+  setActiveConversation(id: string | null, meta?: ConversationTransitionLogInput): void
 
   setMobileSidebarOpen(open: boolean): void
 
@@ -260,14 +269,28 @@ export const useAppStore = create<AppState>()(
         attachDispatchToMessageForRun(s.dispatchesByRunId, message.runId, message.id)
       }),
 
-    setActiveConversation: (id) =>
+    setActiveConversation: (id, meta) => {
+      let previousConversationId: string | null = null
       set((s) => {
+        previousConversationId = s.activeConversationId
         s.activeConversationId = id
         // 切到该会话即视为已读
         if (id) delete s.unreadByConv[id]
         // 切会话时自动收起移动 sidebar
         if (id) s.mobileSidebarOpen = false
-      }),
+      })
+
+      if (!id || previousConversationId === id) return
+      void recordConversationTransitionApi(id, {
+        fromConversationId: meta?.fromConversationId ?? previousConversationId,
+        source: meta?.source ?? 'app-store',
+        reason: meta?.reason ?? 'conversation switch',
+        trigger: meta?.trigger ?? null,
+        recipient: meta?.recipient ?? 'window',
+      }).catch((error) => {
+        console.warn('[app-store] failed to record conversation transition', error)
+      })
+    },
 
     setMobileSidebarOpen: (open) =>
       set((s) => {
@@ -745,8 +768,14 @@ export const useAppStore = create<AppState>()(
               plan: pending.plan,
               taskStatus: status,
               childRunIds: existing?.childRunIds ?? {},
+              taskProgress: existing?.taskProgress ?? {},
+              taskLastEventAt: existing?.taskLastEventAt ?? {},
+              taskLastStatusText: existing?.taskLastStatusText ?? {},
+              taskReports: existing?.taskReports ?? {},
               reviewStatus: 'pending',
               pendingPlanId: pending.id,
+              lastEventAt: event.timestamp,
+              lastStatusText: '等待确认',
             }
             return
           }
@@ -758,6 +787,8 @@ export const useAppStore = create<AppState>()(
             // revising：只清掉当前 pending（计划卡先回落到只读），等 Orchestrator 重排发来新的
             // dispatch.plan.pending 再变回审批态；不要置成 rejected。
             if (!event.revising) dispatch.reviewStatus = event.approved ? 'approved' : 'rejected'
+            dispatch.lastEventAt = event.timestamp
+            dispatch.lastStatusText = event.revising ? '计划重排中' : event.approved ? '计划已确认' : '计划已拒绝'
             return
           }
 
@@ -773,7 +804,13 @@ export const useAppStore = create<AppState>()(
               plan: event.plan,
               taskStatus: status,
               childRunIds: existing?.childRunIds ?? {},
+              taskProgress: existing?.taskProgress ?? {},
+              taskLastEventAt: existing?.taskLastEventAt ?? {},
+              taskLastStatusText: existing?.taskLastStatusText ?? {},
+              taskReports: existing?.taskReports ?? {},
               reviewStatus: 'approved',
+              lastEventAt: event.timestamp,
+              lastStatusText: '计划已发布',
             }
             return
           }
@@ -783,6 +820,31 @@ export const useAppStore = create<AppState>()(
             if (!d) return
             d.taskStatus[event.taskId] = 'running'
             d.childRunIds[event.taskId] = event.childRunId
+            d.taskLastEventAt ??= {}
+            d.taskLastStatusText ??= {}
+            d.taskLastEventAt[event.taskId] = event.timestamp
+            d.taskLastStatusText[event.taskId] = '正在执行'
+            d.taskProgress ??= {}
+            d.lastEventAt = event.timestamp
+            d.lastStatusText = `任务 ${event.taskId} 正在执行`
+            return
+          }
+
+          case 'dispatch.progress': {
+            const direct = s.dispatchesByRunId[event.parentRunId]
+            const targets = direct
+              ? [direct]
+              : Object.values(s.dispatchesByRunId).filter((d) => event.childRunId && d.childRunIds[event.taskId] === event.childRunId)
+            for (const d of targets) {
+              d.taskProgress ??= {}
+              d.taskLastEventAt ??= {}
+              d.taskLastStatusText ??= {}
+              d.taskProgress[event.taskId] = event.progress
+              d.taskLastEventAt[event.taskId] = event.timestamp
+              d.taskLastStatusText[event.taskId] = event.progress.summary
+              d.lastEventAt = event.timestamp
+              d.lastStatusText = '任务 ' + event.taskId + ' 进度更新'
+            }
             return
           }
 
@@ -791,6 +853,15 @@ export const useAppStore = create<AppState>()(
             if (direct) {
               direct.taskStatus[event.taskId] = event.status
               if (event.childRunId) direct.childRunIds[event.taskId] = event.childRunId
+              direct.taskLastEventAt ??= {}
+              direct.taskLastStatusText ??= {}
+              direct.taskLastEventAt[event.taskId] = event.timestamp
+              direct.taskLastStatusText[event.taskId] = event.status === 'complete' ? '已完成' : event.status === 'failed' ? '失败' : '已中止'
+              direct.taskReports ??= {}
+              if (event.taskReport) direct.taskReports[event.taskId] = event.taskReport
+              direct.taskProgress ??= {}
+              direct.lastEventAt = event.timestamp
+              direct.lastStatusText = event.status === 'complete' ? `任务 ${event.taskId} 已完成` : event.status === 'failed' ? `任务 ${event.taskId} 失败` : `任务 ${event.taskId} 已中止`
               return
             }
 
@@ -798,6 +869,13 @@ export const useAppStore = create<AppState>()(
             for (const d of Object.values(s.dispatchesByRunId)) {
               if (event.childRunId && d.childRunIds[event.taskId] === event.childRunId) {
                 d.taskStatus[event.taskId] = event.status
+                d.taskLastEventAt ??= {}
+                d.taskLastStatusText ??= {}
+                d.taskLastEventAt[event.taskId] = event.timestamp
+                d.taskLastStatusText[event.taskId] = event.status === 'complete' ? '已完成' : event.status === 'failed' ? '失败' : '已中止'
+                d.taskReports ??= {}
+                if (event.taskReport) d.taskReports[event.taskId] = event.taskReport
+                d.taskProgress ??= {}
                 return
               }
             }
@@ -930,6 +1008,14 @@ function buildUnresolvedToolResult(status: 'failed' | 'aborted', error?: string)
     : '工具调用未完成：本次运行失败。'
 }
 
+function arraysMatch(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
 function areMessagesEquivalent(a: MessageRow, b: MessageRow): boolean {
   if (a === b) return true
   return (
@@ -1036,21 +1122,49 @@ function areUnknownValuesEquivalent(a: unknown, b: unknown): boolean {
 
 import { useMemo } from 'react'
 
+const messageSelectorCache = new Map<string, { ids: string[]; messages: MessageRow[] }>()
+const pinnedMessageSelectorCache = new Map<string, { ids: string[]; messages: MessageRow[] }>()
+
 export const useMessagesForConversation = (conversationId: string) =>
-  useAppStore(
-    useShallow((s) =>
-      (s.messageIdsByConv[conversationId] ?? []).map((id) => s.messages[id]).filter(Boolean),
-    ),
-  )
+  useAppStore((s) => {
+    const ids = s.messageIdsByConv[conversationId] ?? []
+    const cached = messageSelectorCache.get(conversationId)
+    if (cached && arraysMatch(cached.ids, ids)) {
+      let unchanged = true
+      for (let i = 0; i < ids.length; i++) {
+        if (cached.messages[i] !== s.messages[ids[i]]) {
+          unchanged = false
+          break
+        }
+      }
+      if (unchanged) return cached.messages
+    }
+
+    const messages = ids.map((id) => s.messages[id]).filter(Boolean)
+    messageSelectorCache.set(conversationId, { ids: [...ids], messages })
+    return messages
+  })
 
 /** 当前会话 pin 的消息（按 pinnedMessageIds 数组顺序，即用户 pin 的时间顺序）。 */
 export const usePinnedMessagesForConversation = (conversationId: string) =>
-  useAppStore(
-    useShallow((s) => {
-      const ids = s.conversations[conversationId]?.pinnedMessageIds ?? []
-      return ids.map((id) => s.messages[id]).filter(Boolean)
-    }),
-  )
+  useAppStore((s) => {
+    const ids = s.conversations[conversationId]?.pinnedMessageIds ?? []
+    const cached = pinnedMessageSelectorCache.get(conversationId)
+    if (cached && arraysMatch(cached.ids, ids)) {
+      let unchanged = true
+      for (let i = 0; i < ids.length; i++) {
+        if (cached.messages[i] !== s.messages[ids[i]]) {
+          unchanged = false
+          break
+        }
+      }
+      if (unchanged) return cached.messages
+    }
+
+    const messages = ids.map((id) => s.messages[id]).filter(Boolean)
+    pinnedMessageSelectorCache.set(conversationId, { ids: [...ids], messages })
+    return messages
+  })
 
 export const useActiveConversation = () =>
   useAppStore((s) => (s.activeConversationId ? s.conversations[s.activeConversationId] : null))
